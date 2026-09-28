@@ -374,8 +374,6 @@
       return;
     }
 
-    const fence = r.fence * 10;
-    const d = ball ? Math.min(ball.d, r.crash * 10) : 0;
     const m = r.phase === 'running' ? floor2(Math.min(multAt(now - r.phaseStart), r.crash)) : r.crash;
 
     // 結果大字
@@ -398,25 +396,18 @@
       }
     }
 
-    // 下方：倍數 + 距離 + 距牆進度（俯視且畫面夠寬時移到左下角，避免擋住內野）
+    // 下方：倍數 + 飛行距離（俯視且畫面夠寬時移到左下角，避免擋住內野）
     const by = H - big * 0.95;
     const cornerHud = field.view === 'top' && W >= 520;
     if (cornerHud) { ctx.save(); ctx.translate(big * 3.1 + 12 - cx, 0); }
-    pill(cx, by, Math.min(W - 24, big * 6.2), big * 1.55, 'rgba(10,25,35,.78)');
+    pill(cx, by, Math.min(W - 24, big * 5.6), big * 1.3, 'rgba(10,25,35,.78)');
     const shown = r.phase === 'crashed' && r.homer ? r.payout : m;
     ctx.fillStyle = r.phase === 'crashed' ? (r.homer ? '#ffd166' : '#ff6b6b') : '#fff';
     ctx.font = `900 ${Math.round(big * 0.78)}px system-ui, sans-serif`;
     ctx.fillText(fmtX(shown), cx - big * 1.05, by - big * 0.08);
     ctx.font = `700 ${Math.round(big * 0.34)}px system-ui, sans-serif`;
     ctx.fillStyle = '#cfd8e3';
-    ctx.fillText(`${(r.phase === 'crashed' ? r.crash * 10 : m * 10).toFixed(1)} m`, cx + big * 1.55, by - big * 0.22);
-    const bw = big * 2.1, bx = cx + big * 0.5, barY = by + big * 0.12;
-    const k = Math.min(1, d / fence);
-    ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(bx, barY, bw, 6);
-    ctx.fillStyle = k > 0.85 ? '#ffd166' : '#06d6a0'; ctx.fillRect(bx, barY, bw * k, 6);
-    ctx.fillStyle = '#9fb0c0'; ctx.font = `600 ${Math.round(big * 0.22)}px system-ui, sans-serif`;
-    ctx.fillText(r.homer && r.phase === 'crashed' ? '飛出全壘打牆！' : `距牆 ${Math.max(0, fence - d).toFixed(1)} m`, cx + big * 1.55, barY + big * 0.32);
-
+    ctx.fillText(`${(r.phase === 'crashed' ? r.crash * 10 : m * 10).toFixed(1)} m`, cx + big * 1.55, by - big * 0.08);
     const mine = eng.myBet();
     if (mine && mine.cashedAt) {
       const txt = `${mine.homer ? '全壘打 ' : '已兌現 '}${fmtX(mine.cashedAt)}  +${fmt(mine.payout - mine.amount)}`;

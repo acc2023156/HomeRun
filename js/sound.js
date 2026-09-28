@@ -8,7 +8,7 @@
   let lastBlip = 0;
   let cheerBuf = null, cheerLoading = false;
   const CHEER_URL = 'Sound/crowd-cheer.mp3';
-  const CHEER_GAIN = 0.7; // 原音量降低 30%
+  const CHEER_GAIN = 0.56; // 原音量 ×0.7 再 ×0.8
   try { enabled = localStorage.getItem('homerun.sound') !== 'off'; } catch (e) { /* storage unavailable */ }
 
   function audio() {
@@ -129,7 +129,7 @@
     },
     lose() { tone(330, { at: 0.35, dur: 0.18, type: 'triangle', gain: 0.07 }); tone(247, { at: 0.52, dur: 0.3, type: 'triangle', gain: 0.07 }); },
 
-    // 球在飛時的觀眾聲浪，越遠越大聲
+    // 球飛行聲：輕柔的「咻～」，球越飛越遠音高下降、音量變小
     humStart() {
       const ac = enabled && audio();
       if (!ac || hum) return;
@@ -137,9 +137,10 @@
       const src = ac.createBufferSource();
       const f = ac.createBiquadFilter(), g = ac.createGain();
       src.buffer = noiseBuf; src.loop = true;
-      f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.8;
+      f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 6;
       g.gain.setValueAtTime(0.0001, ac.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.05, ac.currentTime + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.06, ac.currentTime + 0.08);
+      g.gain.exponentialRampToValueAtTime(0.018, ac.currentTime + 0.9);
       src.connect(f).connect(g).connect(ac.destination);
       src.start();
       hum = { src, f, g };
@@ -147,8 +148,8 @@
     humUpdate(m) {
       if (!hum || !ctx) return;
       const t = ctx.currentTime, k = Math.min(1, (m - 1) / 11);
-      hum.g.gain.setTargetAtTime(0.05 + 0.2 * k * k, t, 0.1);
-      hum.f.frequency.setTargetAtTime(700 + 900 * k, t, 0.1);
+      hum.f.frequency.setTargetAtTime(2400 - 1500 * k, t, 0.15);
+      hum.g.gain.setTargetAtTime(Math.max(0.004, 0.018 * (1 - k)), t, 0.3);
     },
     humStop() {
       if (!hum || !ctx) { hum = null; return; }

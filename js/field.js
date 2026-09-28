@@ -22,12 +22,13 @@
 
   // 規則上的牆距（依方向三等分）
   const fenceAt = deg => (deg < -15 ? FIELDS[0] : deg <= 15 ? FIELDS[1] : FIELDS[2]).fence * 10;
-  // 畫面上的牆：分界 ±2° 內平滑銜接成連續牆面（擊球方向不會落在這 ±2° 內）
+  // 畫面上的牆：分界 ±BLEND° 內用 smoothstep 圓滑銜接，整面牆沒有轉折（擊球方向不會落在這範圍內）
+  const BLEND = 7;
   function fenceVis(deg) {
     const a = Math.max(-45, Math.min(45, deg));
-    const blend = (b, l, r) => { const k = (a - (b - 2)) / 4; return l + (r - l) * k; };
-    if (a > -17 && a < -13) return blend(-15, FIELDS[0].fence * 10, FIELDS[1].fence * 10);
-    if (a > 13 && a < 17) return blend(15, FIELDS[1].fence * 10, FIELDS[2].fence * 10);
+    const blend = (b, l, r) => { const k = (a - (b - BLEND)) / (2 * BLEND); return l + (r - l) * k * k * (3 - 2 * k); };
+    if (a > -15 - BLEND && a < -15 + BLEND) return blend(-15, FIELDS[0].fence * 10, FIELDS[1].fence * 10);
+    if (a > 15 - BLEND && a < 15 + BLEND) return blend(15, FIELDS[1].fence * 10, FIELDS[2].fence * 10);
     return fenceAt(a);
   }
   const polar = (d, deg) => [d * Math.sin(deg * DEG), d * Math.cos(deg * DEG)];

@@ -65,7 +65,7 @@ css/style.css   樣式（RWD）
 js/sha256.js    同步 SHA-256
 js/engine.js    引擎：回合、距離／方向／全壘打判定、100 帳號（不碰 DOM）
 js/field.js     球場渲染：本壘後方透視 + 俯視全場、守備員、煙火
-js/sound.js     音效：擊球、觀眾聲浪、接殺（合成）；全壘打歡呼用 Sound/crowd-cheer.mp3（音量 70%）
+js/sound.js     音效：擊球、觀眾聲浪、接殺（合成）；全壘打歡呼用 Sound/crowd-cheer.mp3（音量 56%）；飛行為輕柔的咻聲
 Sound/          音檔
 js/ui.js        介面、HUD、列表、公平性
 ```
