@@ -339,7 +339,8 @@
     if (r.phase === 'running' && ball) scoreboard = ball.d.toFixed(1) + ' m';
     else if (r.phase === 'crashed') scoreboard = r.homer ? 'HOME RUN!' : 'OUT';
     field.render({
-      roundId: r.id, phase: r.phase, field: r.field, ball, catching: ball && ball.catching,
+      roundId: r.id, phase: r.phase, field: r.field, angle: r.angle, homer: r.homer, ball, catching: ball && ball.catching,
+      flightT: r.phase === 'running' ? now - r.phaseStart : 99999,
       celebrate: r.phase === 'crashed' && r.homer, scoreboard,
     }, now);
     drawHud(r, ball, now);
@@ -377,14 +378,6 @@
     const d = ball ? Math.min(ball.d, r.crash * 10) : 0;
     const m = r.phase === 'running' ? floor2(Math.min(multAt(now - r.phaseStart), r.crash)) : r.crash;
 
-    // 上方：擊球方向
-    const dirTxt = `${fieldName(r.field)} · 全壘打牆 ${fence} m · 過牆 ×${(r.fence * 2).toFixed(1)}`;
-    ctx.font = `700 ${Math.max(11, big * 0.26)}px system-ui, sans-serif`;
-    const tw = ctx.measureText(dirTxt).width + 24;
-    pill(cx, 20, tw, Math.max(22, big * 0.46), 'rgba(10,25,35,.72)');
-    ctx.fillStyle = '#ffe27a';
-    ctx.fillText(dirTxt, cx, 20);
-
     // 結果大字
     if (r.phase === 'crashed') {
       const cy = H * 0.4;
@@ -407,7 +400,7 @@
 
     // 下方：倍數 + 距離 + 距牆進度（俯視且畫面夠寬時移到左下角，避免擋住內野）
     const by = H - big * 0.95;
-    const cornerHud = field.view === 'top' && W >= 640;
+    const cornerHud = field.view === 'top' && W >= 520;
     if (cornerHud) { ctx.save(); ctx.translate(big * 3.1 + 12 - cx, 0); }
     pill(cx, by, Math.min(W - 24, big * 6.2), big * 1.55, 'rgba(10,25,35,.78)');
     const shown = r.phase === 'crashed' && r.homer ? r.payout : m;

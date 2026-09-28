@@ -66,7 +66,8 @@
     const v = parseInt(h.slice(13, 21), 16) / 4294967296;           // [0, 1)
     const sector = Math.min(2, Math.floor(v * 3));
     const f = FIELDS[sector];
-    const angle = f.from + (v * 3 - sector) * (f.to - f.from);
+    // 角度避開分界 ±2.1°（畫面上牆在那裡平滑銜接）；只影響畫面，不影響方向判定
+    const angle = f.from + (0.07 + 0.86 * (v * 3 - sector)) * (f.to - f.from);
     const H = f.fence;
     let dist, homer = false;
     if (u <= CFG.RTP / (2 * H)) {

@@ -6,6 +6,9 @@
   let noiseBuf = null;
   let hum = null;
   let lastBlip = 0;
+  let cheerBuf = null, cheerLoading = false;
+  const CHEER_URL = 'Sound/crowd-cheer.mp3';
+  const CHEER_GAIN = 0.7; // 原音量降低 30%
   try { enabled = localStorage.getItem('homerun.sound') !== 'off'; } catch (e) { /* storage unavailable */ }
 
   function audio() {
@@ -15,7 +18,18 @@
       ctx = new AC();
     }
     if (ctx.state === 'suspended') ctx.resume();
+    loadCheer();
     return ctx;
+  }
+
+  function loadCheer() {
+    if (cheerBuf || cheerLoading || !ctx) return;
+    cheerLoading = true;
+    fetch(CHEER_URL)
+      .then(r => r.arrayBuffer())
+      .then(ab => new Promise((ok, bad) => ctx.decodeAudioData(ab, ok, bad)))
+      .then(buf => { cheerBuf = buf; })
+      .catch(() => { cheerLoading = false; });
   }
 
   function tone(freq, { at = 0, dur = 0.08, type = 'sine', gain = 0.12, slide = 0 } = {}) {
@@ -93,10 +107,25 @@
       tone(160, { dur: 0.1, type: 'sine', gain: 0.18, slide: 0.6 });
       noise({ at: 0.12, dur: 1.1, gain: 0.14, from: 900, to: 350, type: 'bandpass', q: 2 });
     },
-    homer() { // 全壘打：觀眾歡呼＋號角＋煙火
-      noise({ dur: 2.6, gain: 0.3, from: 1200, to: 2200, type: 'bandpass', q: 0.7 });
-      [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, { at: 0.1 + i * 0.12, dur: i === 5 ? 0.5 : 0.14, type: 'sawtooth', gain: 0.06 }));
-      [0.6, 1.1, 1.5, 2.0].forEach(at => noise({ at, dur: 0.35, gain: 0.25, from: 2500, to: 100 }));
+    homer() { // 全壘打：觀眾歡呼（音檔，降 30%）＋輕號角＋煙火
+      const ac = enabled && audio();
+      if (!ac) return;
+      if (cheerBuf) {
+        const src = ac.createBufferSource(), g = ac.createGain(), t = ac.currentTime;
+        const len = Math.min(cheerBuf.duration, 4.8);
+        src.buffer = cheerBuf;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(CHEER_GAIN, t + 0.15);
+        g.gain.setValueAtTime(CHEER_GAIN, t + len - 1.2);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        src.connect(g).connect(ac.destination);
+        src.start(t);
+        src.stop(t + len + 0.05);
+      } else {
+        noise({ dur: 2.2, gain: 0.12, from: 1200, to: 2000, type: 'bandpass', q: 0.7 });
+      }
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, { at: 0.1 + i * 0.12, dur: i === 3 ? 0.4 : 0.14, type: 'triangle', gain: 0.05 }));
+      [0.7, 1.3, 1.9].forEach(at => noise({ at, dur: 0.3, gain: 0.1, from: 2500, to: 100 }));
     },
     lose() { tone(330, { at: 0.35, dur: 0.18, type: 'triangle', gain: 0.07 }); tone(247, { at: 0.52, dur: 0.3, type: 'triangle', gain: 0.07 }); },
 
