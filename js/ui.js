@@ -389,7 +389,7 @@
         const t2 = `${r.fence.toFixed(1)} × 2 = ${fmtX(r.payout)}`;
         ctx.strokeText(t2, cx, cy + big * 0.85); ctx.fillStyle = '#fff'; ctx.fillText(t2, cx, cy + big * 0.85);
       } else {
-        const label = r.crash < 3 ? '內野出局' : '接殺！';
+        const label = r.crash < 3 ? '內野出局' : field.catchKind === 'drop' ? '落地出局' : '接殺！';
         ctx.font = `900 ${Math.round(big * 0.8)}px system-ui, sans-serif`;
         ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(label, cx, cy);
         ctx.fillStyle = '#ff6b6b'; ctx.fillText(label, cx, cy);
