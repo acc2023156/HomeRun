@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { CFG, STYLES, FIELDS, Engine, multAt, outcomeFromSeed, floor2 } = window.Crash;
-  const { heightAt, polar, SWITCH_M } = window.FieldMath;
+  const { heightAt, polar, visScale, SWITCH_M } = window.FieldMath;
 
   let store = null;
   try { store = window.localStorage; store.setItem('__t', '1'); store.removeItem('__t'); } catch (e) { store = null; }
@@ -324,7 +324,7 @@
         catching = true;
       }
     }
-    const [x, y] = polar(d, r.angle);
+    const [x, y] = polar(d * visScale(r.angle), r.angle);
     return { x, y, z, d, catching };
   }
 

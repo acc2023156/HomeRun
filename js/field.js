@@ -22,15 +22,23 @@
 
   // 規則上的牆距（依方向三等分）
   const fenceAt = deg => (deg < -15 ? FIELDS[0] : deg <= 15 ? FIELDS[1] : FIELDS[2]).fence * 10;
-  // 畫面上的牆：分界 ±BLEND° 內用 smoothstep 圓滑銜接，整面牆沒有轉折（擊球方向不會落在這範圍內）
-  const BLEND = 7;
+  // 畫面上的牆：通過三個方向中央牆距點（-30°:110、0°:122、30°:114）的單一圓弧，外型是正常扇形
+  const WALL = (() => {
+    const p = (d, a) => [d * Math.sin(a * DEG), d * Math.cos(a * DEG)];
+    const A = p(FIELDS[0].fence * 10, -30), B = p(FIELDS[1].fence * 10, 0), Cc = p(FIELDS[2].fence * 10, 30);
+    const D = 2 * (A[0] * (B[1] - Cc[1]) + B[0] * (Cc[1] - A[1]) + Cc[0] * (A[1] - B[1]));
+    const s = q => q[0] * q[0] + q[1] * q[1];
+    const ux = (s(A) * (B[1] - Cc[1]) + s(B) * (Cc[1] - A[1]) + s(Cc) * (A[1] - B[1])) / D;
+    const uy = (s(A) * (Cc[0] - B[0]) + s(B) * (A[0] - Cc[0]) + s(Cc) * (B[0] - A[0])) / D;
+    return { ux, uy, r: Math.hypot(A[0] - ux, A[1] - uy) };
+  })();
   function fenceVis(deg) {
-    const a = Math.max(-45, Math.min(45, deg));
-    const blend = (b, l, r) => { const k = (a - (b - BLEND)) / (2 * BLEND); return l + (r - l) * k * k * (3 - 2 * k); };
-    if (a > -15 - BLEND && a < -15 + BLEND) return blend(-15, FIELDS[0].fence * 10, FIELDS[1].fence * 10);
-    if (a > 15 - BLEND && a < 15 + BLEND) return blend(15, FIELDS[1].fence * 10, FIELDS[2].fence * 10);
-    return fenceAt(a);
+    const a = Math.max(-45, Math.min(45, deg)) * DEG;
+    const dx = Math.sin(a), dy = Math.cos(a), b = dx * WALL.ux + dy * WALL.uy;
+    return b + Math.sqrt(b * b - (WALL.ux * WALL.ux + WALL.uy * WALL.uy - WALL.r * WALL.r));
   }
+  // 球的畫面距離依該角度的牆距等比縮放，讓「過牆／牆前接殺」在畫面上一致（顯示距離與判定不變）
+  const visScale = deg => fenceVis(deg) / fenceAt(deg);
   const polar = (d, deg) => [d * Math.sin(deg * DEG), d * Math.cos(deg * DEG)];
 
   // 球的高度只跟「目前距離」有關，所有球同一條彈道，畫面不會提前透露落點
@@ -230,22 +238,20 @@
         ctx.beginPath(); ctx.arc(ox, oy, r * sc, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
       }
 
-      const fan = inset => {
+      // 外框（棕）：扇形往外擴 4 m；草地：牆內
+      const fan = (grow, spread) => {
         ctx.beginPath();
-        ctx.moveTo(...P(0, -4));
-        for (let a = -45; a <= 45; a += 0.5) ctx.lineTo(...P(...polar(fenceVis(a) - inset, a)));
+        ctx.moveTo(...P(0, -grow * 1.4));
+        for (let a = -45 - spread; a <= 45 + spread; a += 0.5) ctx.lineTo(...P(...polar(fenceVis(a) + grow, a)));
         ctx.closePath();
       };
-      fan(-3); ctx.fillStyle = C.track; ctx.fill();
-      ctx.save(); fan(4); ctx.clip();
-      ctx.fillStyle = C.grass1; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = C.grass2;
-      for (let i = -12; i < 12; i += 2) {
-        ctx.beginPath();
-        ctx.moveTo(...P(0, 0));
-        ctx.lineTo(...P(...polar(200, i * 3.75)));
-        ctx.lineTo(...P(...polar(200, (i + 1) * 3.75)));
-        ctx.closePath(); ctx.fill();
+      fan(4, 2.2); ctx.fillStyle = C.track; ctx.fill();
+      ctx.save(); fan(0, 0); ctx.clip();
+      ctx.fillStyle = '#1f7d36'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#1a7130';
+      for (let x = -160; x < 160; x += 16) {
+        const [x0] = P(x, 0), [x1] = P(x + 8, 0);
+        ctx.fillRect(x0, 0, x1 - x0, H);
       }
       ctx.restore();
 
@@ -279,18 +285,13 @@
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.fillRect(-r / 2, -r / 2, r, r); ctx.restore();
       });
 
-      // 全壘打牆（連續）
-      ctx.lineWidth = Math.max(3, 1.4 * sc); ctx.strokeStyle = C.wallTop; ctx.lineJoin = 'round';
-      ctx.beginPath();
-      for (let a = -45; a <= 45; a += 0.5) { const p = P(...polar(fenceVis(a), a)); a === -45 ? ctx.moveTo(...p) : ctx.lineTo(...p); }
-      ctx.stroke();
 
       // 牆距標示
       const fs = Math.max(10, Math.min(15, sc * 5.5));
       FIELDS.forEach(f => {
         const mid = (f.from + f.to) / 2;
         const active = s.phase !== 'betting' && s.field === f.key;
-        const [x, y] = P(...polar(f.fence * 10 - 12, mid));
+        const [x, y] = P(...polar(fenceVis(mid) - 12, mid));
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.font = `800 ${fs}px system-ui, sans-serif`;
         ctx.fillStyle = active ? '#ffe27a' : 'rgba(255,255,255,.9)';
@@ -446,7 +447,7 @@
       circle(0, 0, 4.2, C.dirt);
 
       ctx.strokeStyle = C.line; ctx.lineWidth = 2;
-      [-45, 45].forEach(a => line([0, 0, 0], [...polar(fenceVis(a), a), 0]));
+      [-45, 45].forEach(a => line([...polar(2.9, a), 0], [...polar(fenceVis(a), a), 0]));
       [[-1.9, -0.9], [0.7, -0.9]].forEach(([x, y]) => {
         const r = [[x, y, 0], [x + 1.2, y, 0], [x + 1.2, y + 1.8, 0], [x, y + 1.8, 0]];
         for (let i = 0; i < 4; i++) line(r[i], r[(i + 1) % 4]);
@@ -507,5 +508,5 @@
   }
 
   global.FieldRenderer = FieldRenderer;
-  global.FieldMath = { heightAt, polar, fenceAt, SWITCH_M };
+  global.FieldMath = { heightAt, polar, fenceAt, visScale, SWITCH_M };
 })(window);

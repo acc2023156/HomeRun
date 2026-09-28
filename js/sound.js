@@ -9,6 +9,8 @@
   let cheerBuf = null, cheerLoading = false;
   const CHEER_URL = 'Sound/crowd-cheer.mp3';
   const CHEER_GAIN = 0.56; // 原音量 ×0.7 再 ×0.8
+  const HUM_GAIN = 0.035 * 0.8; // Crash 引擎聲音量的 80%
+  function humFreq(m) { return 90 + Math.min(520, 150 * Math.log2(m) + 40 * (m - 1)); }
   try { enabled = localStorage.getItem('homerun.sound') !== 'off'; } catch (e) { /* storage unavailable */ }
 
   function audio() {
@@ -129,27 +131,27 @@
     },
     lose() { tone(330, { at: 0.35, dur: 0.18, type: 'triangle', gain: 0.07 }); tone(247, { at: 0.52, dur: 0.3, type: 'triangle', gain: 0.07 }); },
 
-    // 球飛行聲：輕柔的「咻～」，球越飛越遠音高下降、音量變小
+    // 球飛行聲：與 Crash 相同的上升引擎聲（音高跟著倍數走），音量為 Crash 的 80%
     humStart() {
       const ac = enabled && audio();
       if (!ac || hum) return;
-      if (!noiseBuf) noise({ dur: 0.01, gain: 0.0001 });
-      const src = ac.createBufferSource();
+      const osc = ac.createOscillator(), osc2 = ac.createOscillator();
       const f = ac.createBiquadFilter(), g = ac.createGain();
-      src.buffer = noiseBuf; src.loop = true;
-      f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 6;
+      osc.type = 'sawtooth'; osc2.type = 'triangle';
+      osc.frequency.value = humFreq(1); osc2.frequency.value = humFreq(1) * 1.005;
+      f.type = 'lowpass'; f.frequency.value = 900;
       g.gain.setValueAtTime(0.0001, ac.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.06, ac.currentTime + 0.08);
-      g.gain.exponentialRampToValueAtTime(0.018, ac.currentTime + 0.9);
-      src.connect(f).connect(g).connect(ac.destination);
-      src.start();
-      hum = { src, f, g };
+      g.gain.exponentialRampToValueAtTime(HUM_GAIN, ac.currentTime + 0.3);
+      osc.connect(f); osc2.connect(f); f.connect(g).connect(ac.destination);
+      osc.start(); osc2.start();
+      hum = { osc, osc2, f, g };
     },
     humUpdate(m) {
       if (!hum || !ctx) return;
-      const t = ctx.currentTime, k = Math.min(1, (m - 1) / 11);
-      hum.f.frequency.setTargetAtTime(2400 - 1500 * k, t, 0.15);
-      hum.g.gain.setTargetAtTime(Math.max(0.004, 0.018 * (1 - k)), t, 0.3);
+      const t = ctx.currentTime, fr = humFreq(m);
+      hum.osc.frequency.setTargetAtTime(fr, t, 0.05);
+      hum.osc2.frequency.setTargetAtTime(fr * 1.005, t, 0.05);
+      hum.f.frequency.setTargetAtTime(900 + fr * 2, t, 0.1);
     },
     humStop() {
       if (!hum || !ctx) { hum = null; return; }
@@ -157,8 +159,8 @@
       hum = null;
       h.g.gain.cancelScheduledValues(t);
       h.g.gain.setValueAtTime(Math.max(0.0001, h.g.gain.value), t);
-      h.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-      h.src.stop(t + 0.2);
+      h.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      h.osc.stop(t + 0.1); h.osc2.stop(t + 0.1);
     },
   };
 
