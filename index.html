@@ -6,18 +6,21 @@
 <meta name="theme-color" content="#0d2a1f">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="description" content="全壘打大賽：多人同時下注，擊球距離就是倍數，飛過全壘打牆拿 18～24 倍（遊戲幣，非真錢）">
-<title>全壘打大賽</title>
-<link rel="stylesheet" href="css/style.css?v=12">
+<title>全壘打</title>
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 <header class="topbar">
-  <a class="back-btn" id="backBtn" hidden>‹ 大廳</a>
-  <div class="brand">HOME<span>RUN</span></div>
-  <div class="demo-tag">模擬遊戲幣 · 非真錢</div>
-  <button class="rules-btn" id="rulesBtn" type="button">玩法</button>
-  <button class="sound-btn" id="soundBtn" type="button" title="音效開關" aria-label="音效開關">🔊</button>
-  <div class="wallet" title="你的遊戲幣餘額"><i class="coin"></i><b id="balance">0.00</b></div>
+  <a class="back-btn" id="backBtn" href="https://acc2023156.github.io/Boss88VIP/boss88-mobile-lobby.html"><span aria-hidden="true">‹</span><span>返回大廳</span></a>
+  <h1 class="brand">全壘打</h1>
+  <div class="top-right">
+    <div class="demo-tag">模擬遊戲幣 · 非真錢</div>
+    <button class="sound-btn" id="soundBtn" type="button" title="音效開關" aria-label="音效開關">🔊</button>
+    <div class="wallet" title="你的遊戲幣餘額"><i class="coin"></i><b id="balance">0.00</b></div>
+  </div>
 </header>
+
+<div class="marquee-bar" aria-hidden="true"><div class="marquee"><span class="marquee-track" id="marquee"></span></div></div>
 
 <main class="layout">
   <section class="stage">
@@ -31,7 +34,8 @@
       <span>玩家 <b id="playerCount">0</b></span>
       <span>總下注 <b id="totalBet">0</b></span>
       <span class="hide-sm">已兌現 <b id="totalWon">0</b></span>
-      <button class="link" id="fairBtn" type="button">公平性</button>
+      <button class="link" id="rulesBtn" type="button">玩法</button>
+      <button class="link link2" id="fairBtn" type="button">公平性</button>
     </div>
   </section>
 
@@ -146,10 +150,10 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="js/sha256.js?v=12"></script>
-<script src="js/sound.js?v=12"></script>
-<script src="js/engine.js?v=12"></script>
-<script src="js/field.js?v=12"></script>
-<script src="js/ui.js?v=12"></script>
+<script src="js/sha256.js?v=13"></script>
+<script src="js/sound.js?v=13"></script>
+<script src="js/engine.js?v=13"></script>
+<script src="js/field.js?v=13"></script>
+<script src="js/ui.js?v=13"></script>
 </body>
 </html>

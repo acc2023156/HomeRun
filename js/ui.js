@@ -256,10 +256,25 @@
       const url = new URL(ret);
       const okHost = url.hostname === 'acc2023156.github.io' || url.hostname === location.hostname || url.hostname === 'localhost' || url.hostname === '127.0.0.1';
       if (!/^https?:$/.test(url.protocol) || !okHost) return;
-      const back = $('#backBtn');
-      back.href = url.href;
-      back.hidden = false;
+      $('#backBtn').href = url.href;
     } catch (e) { /* invalid url */ }
+  })();
+
+  /* ---------- 跑馬燈（同 Plinko：兩份相同文字捲動一半寬度，無縫循環） ---------- */
+  (function startMarquee() {
+    const track = $('#marquee');
+    const brand = '全壘打';
+    const cheers = ['轟出全壘打', '一棒逆轉', '再見全壘打', '滿貫砲', '飛越全壘打牆', '強棒出擊', '重砲轟擊', '中外野 24 倍', '揮出好球', '大棒一揮'];
+    const sep = '　✦　';
+    const build = () => {
+      const c = cheers.slice().sort(() => Math.random() - 0.5);
+      const text = [brand, c[0], c[1], brand, c[2], c[3]].join(sep) + sep;
+      track.innerHTML = '';
+      for (let i = 0; i < 2; i++) track.appendChild(document.createElement('span')).textContent = text;
+      track.style.animationDuration = text.length * 0.32 + 's';
+    };
+    track.addEventListener('animationiteration', build);
+    build();
   })();
 
   /* ---------- fairness ---------- */
