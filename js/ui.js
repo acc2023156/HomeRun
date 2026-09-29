@@ -2,7 +2,7 @@
   'use strict';
   const { CFG, STYLES, FIELDS, Engine, multAt, outcomeFromSeed, floor2 } = window.Crash;
   const { heightAt, polar, visScale } = window.FieldMath;
-  const SWING_TO_TOP_MS = 300; // 擊球後揮完棒就切俯視
+  const TOP_BEFORE_HIT_MS = 180; // 揮棒開始（擊球前）就切俯視，短距離也看得到
 
   let store = null;
   try { store = window.localStorage; store.setItem('__t', '1'); store.removeItem('__t'); } catch (e) { store = null; }
@@ -334,8 +334,9 @@
     if (!W || !H) return;
     const r = eng.round;
     const ball = ballState(now);
-    if (r.phase === 'betting') field.setView('behind', now);
-    else if (r.phase === 'crashed' || now - r.phaseStart >= SWING_TO_TOP_MS) field.setView('top', now);
+    const toTop = r.phase !== 'betting' || CFG.BET_MS - (now - r.phaseStart) <= TOP_BEFORE_HIT_MS;
+    if (toTop && field.view !== 'top') Sound.swoosh();
+    field.setView(toTop ? 'top' : 'behind', now);
 
     let scoreboard = 'ROUND ' + r.id;
     if (r.phase === 'running' && ball) scoreboard = ball.d.toFixed(1) + ' m';

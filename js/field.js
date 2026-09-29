@@ -10,7 +10,7 @@
   const { FIELDS } = global.Crash;
   const DEG = Math.PI / 180;
   const SWITCH_M = 50;          // 飛到 50 m 切換俯視（對所有球相同，不洩漏結果）
-  const FADE_MS = 450;
+  const FADE_MS = 250;
   const NEAR = 1;               // 近平面（公尺）
 
   const C = {

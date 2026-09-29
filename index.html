@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="description" content="全壘打大賽：多人同時下注，擊球距離就是倍數，飛過全壘打牆 ×2（遊戲幣，非真錢）">
 <title>全壘打大賽</title>
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
 <header class="topbar">
@@ -130,7 +130,7 @@
     <ol class="rules">
       <li>下注階段 7 秒，打者擊球後球開始飛行，<b>倍數 = 飛行距離 ÷ 10</b>（35 m = 3.50×）。</li>
       <li>球落地前按「兌現」即可拿走目前倍數；球落地時還沒兌現就輸掉這注。</li>
-      <li>打擊視角（投球倒數時）<b>點擊畫面＝下注</b>；擊球後切到俯視圖，<b>點擊畫面＝兌現</b>。</li>
+      <li>打擊視角（投球倒數時）<b>點擊畫面＝下注</b>；揮棒時切到俯視圖，<b>點擊畫面＝兌現</b>。</li>
       <li><b>飛過全壘打牆 = 牆距倍數 × 2</b>，本局結束，所有還沒兌現的人一起拿 2 倍。</li>
     </ol>
     <table class="fence-table">
@@ -139,17 +139,17 @@
       <tr><td>中外野</td><td>122 m</td><td>12.2 × 2 = <b>24.4×</b></td></tr>
       <tr><td>右外野</td><td>114 m</td><td>11.4 × 2 = <b>22.8×</b></td></tr>
     </table>
-    <p class="hint">外野切三等分，擊球方向在擊球瞬間公開。擊球後（揮完棒）立即切換為俯視全場視角並開始量距離。</p>
+    <p class="hint">外野切三等分，擊球方向在擊球瞬間公開。打者揮棒時（擊球前）就切換為俯視全場視角，擊球後開始量距離。</p>
     <p class="hint">RTP 98.5%：60 m 以內與原本 Crash 相同；飛向外野後彈道會下墜（越接近牆越容易落地），押全壘打（按「HR」）的返還率同樣是 98.5%。</p>
   </div>
 </div>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="js/sha256.js?v=9"></script>
-<script src="js/sound.js?v=9"></script>
-<script src="js/engine.js?v=9"></script>
-<script src="js/field.js?v=9"></script>
-<script src="js/ui.js?v=9"></script>
+<script src="js/sha256.js?v=10"></script>
+<script src="js/sound.js?v=10"></script>
+<script src="js/engine.js?v=10"></script>
+<script src="js/field.js?v=10"></script>
+<script src="js/ui.js?v=10"></script>
 </body>
 </html>

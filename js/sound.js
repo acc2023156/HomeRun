@@ -89,10 +89,17 @@
     bet() { tone(520, { dur: 0.06, type: 'square', gain: 0.05 }); tone(780, { at: 0.06, dur: 0.09, type: 'square', gain: 0.05 }); },
     cancel() { tone(420, { dur: 0.12, type: 'triangle', gain: 0.09, slide: 0.6 }); },
     tick(last) { tone(last ? 1175 : 880, { dur: last ? 0.16 : 0.07, type: 'sine', gain: 0.1 }); },
-    launch() { // 擊球「鏗」一聲
-      noise({ dur: 0.07, gain: 0.5, from: 9000, to: 2500, type: 'highpass' });
-      tone(1900, { dur: 0.05, type: 'square', gain: 0.07, slide: 0.7 });
-      tone(420, { dur: 0.09, type: 'triangle', gain: 0.12, slide: 0.5 });
+    launch() { // 遊戲風擊球「鏗！」：高音脆響＋金屬餘韻＋低音重擊
+      noise({ dur: 0.05, gain: 0.55, from: 12000, to: 3000, type: 'highpass' });
+      tone(2600, { dur: 0.04, type: 'square', gain: 0.08, slide: 0.55 });
+      tone(1318, { dur: 0.32, type: 'triangle', gain: 0.1 });
+      tone(1976, { dur: 0.26, type: 'triangle', gain: 0.06 });
+      tone(2637, { at: 0.01, dur: 0.18, type: 'sine', gain: 0.04 });
+      tone(110, { dur: 0.16, type: 'sine', gain: 0.22, slide: 0.5 });
+      noise({ at: 0.02, dur: 0.22, gain: 0.12, from: 2500, to: 600, type: 'bandpass', q: 1.2 });
+    },
+    swoosh() { // 切換視角的鏡頭掃動聲
+      noise({ dur: 0.26, gain: 0.16, from: 500, to: 3200, type: 'bandpass', q: 2.5 });
     },
     milestone() { // 飛向外野，觀眾「喔～」
       noise({ dur: 0.9, gain: 0.12, from: 500, to: 900, type: 'bandpass', q: 3 });
