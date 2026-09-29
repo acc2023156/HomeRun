@@ -1,4 +1,4 @@
-/* 合成音效（Web Audio，不需音檔）：擊球、飛行、落地、全壘打歡呼。第一次使用者操作後才建立 AudioContext */
+/* 音效：投球前 calvary、擊球 Hit、全壘打 Homerun 用 Sound/ 音檔；飛行、落地等用 Web Audio 合成。第一次使用者操作後才建立 AudioContext */
 (function (global) {
   'use strict';
   let ctx = null;
@@ -6,9 +6,14 @@
   let noiseBuf = null;
   let hum = null;
   let lastBlip = 0;
-  let cheerBuf = null, cheerLoading = false;
-  const CHEER_URL = 'Sound/crowd-cheer.mp3';
-  const CHEER_GAIN = 0.56; // 原音量 ×0.7 再 ×0.8
+  // 音檔（大小寫需與檔名一致，GitHub Pages 區分大小寫）
+  const FILES = {
+    calvary: { url: 'Sound/calvary.MP3', gain: 1 },
+    hit: { url: 'Sound/Hit.MP3', gain: 0.8 },
+    homerun: { url: 'Sound/Homerun.MP3', gain: 1 },
+  };
+  const bufs = {};
+  let filesLoading = false;
   const HUM_GAIN = 0.035 * 0.8; // Crash 引擎聲音量的 80%
   function humFreq(m) { return 90 + Math.min(520, 150 * Math.log2(m) + 40 * (m - 1)); }
   try { enabled = localStorage.getItem('homerun.sound') !== 'off'; } catch (e) { /* storage unavailable */ }
@@ -20,18 +25,32 @@
       ctx = new AC();
     }
     if (ctx.state === 'suspended') ctx.resume();
-    loadCheer();
+    loadFiles();
     return ctx;
   }
 
-  function loadCheer() {
-    if (cheerBuf || cheerLoading || !ctx) return;
-    cheerLoading = true;
-    fetch(CHEER_URL)
-      .then(r => r.arrayBuffer())
-      .then(ab => new Promise((ok, bad) => ctx.decodeAudioData(ab, ok, bad)))
-      .then(buf => { cheerBuf = buf; })
-      .catch(() => { cheerLoading = false; });
+  function loadFiles() {
+    if (filesLoading || !ctx) return;
+    filesLoading = true;
+    Object.entries(FILES).forEach(([k, f]) => {
+      fetch(f.url)
+        .then(r => r.arrayBuffer())
+        .then(ab => new Promise((ok, bad) => ctx.decodeAudioData(ab, ok, bad)))
+        .then(buf => { bufs[k] = buf; })
+        .catch(() => { /* 載入失敗就用合成音 */ });
+    });
+  }
+
+  // 播放音檔；沒載入成功回傳 false，讓呼叫端改用合成音
+  function play(name) {
+    const ac = enabled && audio();
+    if (!ac || !bufs[name]) return false;
+    const src = ac.createBufferSource(), g = ac.createGain();
+    src.buffer = bufs[name];
+    g.gain.value = FILES[name].gain;
+    src.connect(g).connect(ac.destination);
+    src.start();
+    return true;
   }
 
   function tone(freq, { at = 0, dur = 0.08, type = 'sine', gain = 0.12, slide = 0 } = {}) {
@@ -89,7 +108,9 @@
     bet() { tone(520, { dur: 0.06, type: 'square', gain: 0.05 }); tone(780, { at: 0.06, dur: 0.09, type: 'square', gain: 0.05 }); },
     cancel() { tone(420, { dur: 0.12, type: 'triangle', gain: 0.09, slide: 0.6 }); },
     tick(last) { tone(last ? 1175 : 880, { dur: last ? 0.16 : 0.07, type: 'sine', gain: 0.1 }); },
-    launch() { // 遊戲風擊球「鏗！」：高音脆響＋金屬餘韻＋低音重擊
+    calvary() { play('calvary'); },      // 投球前一秒的號角
+    hit() { if (!play('hit')) Sound.launch(); }, // 擊球（Hit.MP3，重擊點在 0.07 秒）
+    launch() { // 合成版擊球「鏗！」（音檔載入失敗時的備援）
       noise({ dur: 0.05, gain: 0.55, from: 12000, to: 3000, type: 'highpass' });
       tone(2600, { dur: 0.04, type: 'square', gain: 0.08, slide: 0.55 });
       tone(1318, { dur: 0.32, type: 'triangle', gain: 0.1 });
@@ -116,25 +137,10 @@
       tone(120, { at: 0.68, dur: 0.12, type: 'sine', gain: 0.16, slide: 0.6 });
       noise({ at: 0.2, dur: 1.1, gain: 0.12, from: 900, to: 350, type: 'bandpass', q: 2 });
     },
-    homer() { // 全壘打：觀眾歡呼（音檔，降 30%）＋輕號角＋煙火
-      const ac = enabled && audio();
-      if (!ac) return;
-      if (cheerBuf) {
-        const src = ac.createBufferSource(), g = ac.createGain(), t = ac.currentTime;
-        const len = Math.min(cheerBuf.duration, 4.8);
-        src.buffer = cheerBuf;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(CHEER_GAIN, t + 0.15);
-        g.gain.setValueAtTime(CHEER_GAIN, t + len - 1.2);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-        src.connect(g).connect(ac.destination);
-        src.start(t);
-        src.stop(t + len + 0.05);
-      } else {
-        noise({ dur: 2.2, gain: 0.12, from: 1200, to: 2000, type: 'bandpass', q: 0.7 });
-      }
+    homer() { // 全壘打：Homerun.MP3（失敗時用合成歡呼）
+      if (play('homerun')) return;
+      noise({ dur: 2.2, gain: 0.12, from: 1200, to: 2000, type: 'bandpass', q: 0.7 });
       [523, 659, 784, 1047].forEach((f, i) => tone(f, { at: 0.1 + i * 0.12, dur: i === 3 ? 0.4 : 0.14, type: 'triangle', gain: 0.05 }));
-      [0.7, 1.3, 1.9].forEach(at => noise({ at, dur: 0.3, gain: 0.1, from: 2500, to: 100 }));
     },
     lose() { tone(330, { at: 0.35, dur: 0.18, type: 'triangle', gain: 0.07 }); tone(247, { at: 0.52, dur: 0.3, type: 'triangle', gain: 0.07 }); },
 

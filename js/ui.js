@@ -33,6 +33,7 @@
   let liveCashouts = [];
   const MILESTONES = [5, 8, 10];
   let milestoneIdx = 0, lastTickSec = 0;
+  let cueRound = -1, cues = {};
 
   /* ---------- toast ---------- */
   function toast(msg, type = 'info') {
@@ -58,7 +59,7 @@
     if (b === null) Sound.cancel();
     else if (b.isPlayer) Sound.bet();
   });
-  eng.on('run', () => { milestoneIdx = 0; Sound.launch(); Sound.humStart(); });
+  eng.on('run', () => { milestoneIdx = 0; Sound.humStart(); });
   eng.on('cashout', b => {
     dirtyBets = true;
     liveCashouts.unshift(b);
@@ -298,6 +299,9 @@
     const rect = cv.parentElement.getBoundingClientRect();
     W = rect.width; H = rect.height;
     field.resize(W, H, Math.min(2, window.devicePixelRatio || 1));
+    const big = Math.max(26, Math.min(W * 0.09, H * 0.14, 64));
+    field.bottomReserve = big * 1.65 + 8;
+    el.live.style.bottom = Math.round(big * 1.65 + 12) + 'px';
   }
   new ResizeObserver(resize).observe(cv.parentElement);
   resize();
@@ -365,25 +369,19 @@
     if (r.phase === 'betting') {
       const left = Math.max(0, CFG.BET_MS - (now - r.phaseStart));
       const canBet = !eng.myBet() && !eng.auto.on;
-      if (left <= 1500) {
-        pill(cx, 24, big * 3.6, big * 0.6, 'rgba(10,25,35,.78)');
-        ctx.fillStyle = '#ffd166'; ctx.font = `800 ${Math.round(big * 0.32)}px system-ui, sans-serif`;
-        ctx.fillText(`投球倒數 ${(left / 1000).toFixed(1)}s`, cx, 24);
-        if (canBet) hint('點擊畫面下注', H - 26);
-        return;
-      }
-      const cy = H * 0.42;
-      pill(cx, cy, Math.min(W * 0.7, big * 5.4), big * 2.3, 'rgba(10,25,35,.72)');
+      // 單一倒數放在畫面上方，一直倒數到 0
+      const cy = big * 0.95, pw = Math.min(W - 24, big * 5), ph = big * 1.5;
+      pill(cx, cy, pw, ph, 'rgba(10,25,35,.78)');
       ctx.fillStyle = '#cfd8e3';
-      ctx.font = `600 ${Math.round(big * 0.3)}px system-ui, sans-serif`;
-      ctx.fillText('投球倒數', cx, cy - big * 0.55);
-      ctx.fillStyle = '#fff';
-      ctx.font = `800 ${Math.round(big * 0.85)}px system-ui, sans-serif`;
-      ctx.fillText((left / 1000).toFixed(1) + 's', cx, cy + big * 0.2);
-      const bw = Math.min(W * 0.5, 300), by = cy + big * 0.85;
-      ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(cx - bw / 2, by, bw, 5);
-      ctx.fillStyle = '#ffd166'; ctx.fillRect(cx - bw / 2, by, bw * (left / CFG.BET_MS), 5);
-      if (canBet) hint('點擊畫面下注', cy + big * 1.45);
+      ctx.font = `700 ${Math.round(big * 0.3)}px system-ui, sans-serif`;
+      ctx.fillText('投球倒數', cx - pw * 0.2, cy - big * 0.08);
+      ctx.fillStyle = left <= 1500 ? '#ffd166' : '#fff';
+      ctx.font = `900 ${Math.round(big * 0.72)}px system-ui, sans-serif`;
+      ctx.fillText((left / 1000).toFixed(1) + 's', cx + pw * 0.16, cy - big * 0.08);
+      const bw = pw * 0.8, by = cy + big * 0.45;
+      ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(cx - bw / 2, by, bw, 4);
+      ctx.fillStyle = '#ffd166'; ctx.fillRect(cx - bw / 2, by, bw * (left / CFG.BET_MS), 4);
+      if (canBet && field.view === 'behind') hint('點擊畫面下注', H - 26);
       return;
     }
     // 打擊視角不顯示飛行距離，切到俯視才開始量
@@ -411,18 +409,13 @@
       }
     }
 
-    // 下方：倍數 + 飛行距離（俯視且畫面夠寬時移到左下角，避免擋住內野）
+    // 下方：倍數（距離已標在球旁邊）
     const by = H - big * 0.95;
-    const cornerHud = field.view === 'top' && W >= 520;
-    if (cornerHud) { ctx.save(); ctx.translate(big * 3.1 + 12 - cx, 0); }
-    pill(cx, by, Math.min(W - 24, big * 5.6), big * 1.3, 'rgba(10,25,35,.78)');
+    pill(cx, by, Math.min(W - 24, big * 3.6), big * 1.3, 'rgba(10,25,35,.78)');
     const shown = r.phase === 'crashed' && r.homer ? r.payout : m;
     ctx.fillStyle = r.phase === 'crashed' ? (r.homer ? '#ffd166' : '#ff6b6b') : '#fff';
     ctx.font = `900 ${Math.round(big * 0.78)}px system-ui, sans-serif`;
-    ctx.fillText(fmtX(shown), cx - big * 1.05, by - big * 0.08);
-    ctx.font = `700 ${Math.round(big * 0.34)}px system-ui, sans-serif`;
-    ctx.fillStyle = '#cfd8e3';
-    ctx.fillText(`${(r.phase === 'crashed' ? r.crash * 10 : m * 10).toFixed(1)} m`, cx + big * 1.55, by - big * 0.08);
+    ctx.fillText(fmtX(shown), cx, by);
     const mine = eng.myBet();
     if (mine && !mine.cashedAt && r.phase === 'running') hint('點擊畫面兌現', by - big * 1.15, '#ff9f1c');
     if (mine && mine.cashedAt) {
@@ -432,7 +425,6 @@
       pill(cx, by - big * 1.15, w2, big * 0.5, 'rgba(6,120,60,.9)');
       ctx.fillStyle = '#fff'; ctx.fillText(txt, cx, by - big * 1.15);
     }
-    if (cornerHud) ctx.restore();
   }
   function hint(txt, y, color = '#00e701') {
     ctx.font = `800 ${Math.max(12, Math.round(Math.min(W * 0.035, 17)))}px system-ui, sans-serif`;
@@ -464,11 +456,16 @@
   /* ---------- sound ---------- */
   function soundFrame(now) {
     const r = eng.round;
+    if (r.id !== cueRound) { cueRound = r.id; cues = {}; }
     if (r.phase === 'betting') {
-      const sec = Math.ceil((CFG.BET_MS - (now - r.phaseStart)) / 1000);
+      const leftMs = CFG.BET_MS - (now - r.phaseStart);
+      if (leftMs <= 2500 && !cues.calvary) { cues.calvary = 1; Sound.calvary(); } // 投手動作（1.5 秒）前一秒
+      if (leftMs <= 70 && !cues.hit) { cues.hit = 1; Sound.hit(); }
+      const sec = Math.ceil(leftMs / 1000);
       if (sec <= 3 && sec >= 1 && sec !== lastTickSec) Sound.tick(sec === 1);
       lastTickSec = sec;
     } else if (r.phase === 'running') {
+      if (!cues.hit) { cues.hit = 1; Sound.hit(); }
       const m = multAt(now - r.phaseStart);
       Sound.humUpdate(m);
       if (m >= MILESTONES[milestoneIdx] && m < r.crash) Sound.milestone(MILESTONES[milestoneIdx++]);

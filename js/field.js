@@ -203,8 +203,9 @@
        ========================================================= */
     drawTop(s) {
       const { ctx, W, H } = this;
-      const sc = Math.min(W / 205, (H - 16) / 150);
-      const ox = W / 2, oy = H - 10 - 6 * sc;
+      const reserve = this.bottomReserve || 0; // 下方留給倍數框
+      const sc = Math.min(W / 205, (H - reserve - 16) / 150);
+      const ox = W / 2, oy = H - reserve - 6 * sc;
       const P = (x, y) => [ox + x * sc, oy - y * sc];
 
       // 場外：素色深底 + 淡淡的座位弧線

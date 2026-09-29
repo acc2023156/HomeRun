@@ -65,7 +65,7 @@ css/style.css   樣式（RWD）
 js/sha256.js    同步 SHA-256
 js/engine.js    引擎：回合、距離／方向／全壘打判定、100 帳號（不碰 DOM）
 js/field.js     球場渲染：本壘後方透視 + 俯視全場、投手投球、打者揮棒、看台座位、煙火
-js/sound.js     音效：擊球、落地（合成）；全壘打歡呼用 Sound/crowd-cheer.mp3（音量 56%）；飛行聲與 Crash 相同的上升引擎聲（音量 80%）
-Sound/          音檔
+js/sound.js     音效：投球前 1 秒 calvary.MP3、擊球 Hit.MP3、全壘打 Homerun.MP3；飛行聲（與 Crash 相同上升引擎聲，80%）、落地等為合成
+Sound/          音檔（flight.wav = 遊戲內飛行聲的離線輸出，12.5 秒）
 js/ui.js        介面、HUD、列表、公平性
 ```
