@@ -277,7 +277,7 @@
         ctx.fillText(`${f.fence * 10} m`, x, y);
         ctx.font = `700 ${fs * 0.75}px system-ui, sans-serif`;
         ctx.fillStyle = active ? '#ffe27a' : 'rgba(255,255,255,.7)';
-        ctx.fillText(`×${(f.fence * 2).toFixed(1)}`, x, y + fs * 0.95);
+        ctx.fillText(`×${f.hr}`, x, y + fs * 0.95);
       });
 
       this.dot(P(...MOUND), Math.max(3.5, 1.6 * sc), C.jersey, '#fff');
@@ -293,7 +293,7 @@
         this.ball(gx, gy - lift, rad);
         ctx.font = `700 ${Math.max(10, fs * 0.8)}px system-ui, sans-serif`;
         ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(`${b.d.toFixed(1)} m`, gx + rad + 6, gy - lift);
+        ctx.fillText(`${(b.label != null ? b.label : b.d).toFixed(1)} m`, gx + rad + 6, gy - lift);
       }
     }
 

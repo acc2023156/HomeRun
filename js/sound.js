@@ -11,6 +11,7 @@
     calvary: { url: 'Sound/calvary.MP3', gain: 1 },
     hit: { url: 'Sound/Hit.MP3', gain: 0.8 },
     homerun: { url: 'Sound/Homerun.MP3', gain: 1 },
+    flight: { url: 'Sound/flight.MP3', gain: 1 },
   };
   const bufs = {};
   let filesLoading = false;
@@ -144,10 +145,20 @@
     },
     lose() { tone(330, { at: 0.35, dur: 0.18, type: 'triangle', gain: 0.07 }); tone(247, { at: 0.52, dur: 0.3, type: 'triangle', gain: 0.07 }); },
 
-    // 球飛行聲：與 Crash 相同的上升引擎聲（音高跟著倍數走），音量為 Crash 的 80%
+    // 球飛行聲：Sound/flight.MP3；載入失敗時改用合成的上升引擎聲
     humStart() {
       const ac = enabled && audio();
       if (!ac || hum) return;
+      if (bufs.flight) { // 飛行聲音檔：擊球起播放，結束時淡出
+        const src = ac.createBufferSource(), g = ac.createGain();
+        src.buffer = bufs.flight;
+        src.loop = true; // 音檔 9.4 秒，長飛行時循環
+        g.gain.value = FILES.flight.gain;
+        src.connect(g).connect(ac.destination);
+        src.start();
+        hum = { src, g, file: true };
+        return;
+      }
       const osc = ac.createOscillator(), osc2 = ac.createOscillator();
       const f = ac.createBiquadFilter(), g = ac.createGain();
       osc.type = 'sawtooth'; osc2.type = 'triangle';
@@ -160,7 +171,7 @@
       hum = { osc, osc2, f, g };
     },
     humUpdate(m) {
-      if (!hum || !ctx) return;
+      if (!hum || !ctx || hum.file) return;
       const t = ctx.currentTime, fr = humFreq(m);
       hum.osc.frequency.setTargetAtTime(fr, t, 0.05);
       hum.osc2.frequency.setTargetAtTime(fr * 1.005, t, 0.05);
@@ -172,8 +183,9 @@
       hum = null;
       h.g.gain.cancelScheduledValues(t);
       h.g.gain.setValueAtTime(Math.max(0.0001, h.g.gain.value), t);
-      h.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-      h.osc.stop(t + 0.1); h.osc2.stop(t + 0.1);
+      h.g.gain.exponentialRampToValueAtTime(0.0001, t + (h.file ? 0.25 : 0.08));
+      if (h.file) h.src.stop(t + 0.3);
+      else { h.osc.stop(t + 0.1); h.osc2.stop(t + 0.1); }
     },
   };
 

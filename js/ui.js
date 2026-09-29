@@ -145,7 +145,7 @@
   function readTarget() { return +el.target.value || 0; }
   function updateProfitHint() {
     const t = readTarget();
-    el.profitHint.textContent = t >= 99 ? `全壘打 ${fmt(readAmount() * 21)} ~ ${fmt(readAmount() * 23.4)}` : t >= 1.01 ? fmt(readAmount() * (t - 1)) : '手動兌現';
+    el.profitHint.textContent = t >= 99 ? `全壘打 ${fmt(readAmount() * 17)} ~ ${fmt(readAmount() * 23)}` : t >= 1.01 ? fmt(readAmount() * (t - 1)) : '手動兌現';
   }
   el.amount.addEventListener('input', updateProfitHint);
   el.target.addEventListener('input', updateProfitHint);
@@ -301,7 +301,6 @@
     field.resize(W, H, Math.min(2, window.devicePixelRatio || 1));
     const big = Math.max(26, Math.min(W * 0.09, H * 0.14, 64));
     field.bottomReserve = big * 1.65 + 8;
-    el.live.style.bottom = Math.round(big * 1.65 + 12) + 'px';
   }
   new ResizeObserver(resize).observe(cv.parentElement);
   resize();
@@ -325,13 +324,14 @@
       } else {
         // 下墜落地 → 小彈跳 → 滾一小段
         const fall = Math.min(1, t / 700);
-        d = dEnd + 7 * Math.min(1, t / 1600);
+        d = dEnd + 1.5 * Math.max(0, Math.min(1, (t - 700) / 900)); // 落地後只滾 1.5 m
         if (t < 700) z = h0 * (1 - fall * fall);
         else { const tb = (t - 700) / 450; z = tb < 1 ? 1.4 * Math.sin(Math.PI * tb) : 0; }
       }
     }
     const [x, y] = polar(d * visScale(r.angle), r.angle);
-    return { x, y, z, d };
+    // label：顯示的距離以落地點為準（滾動不算）
+    return { x, y, z, d, label: r.phase === 'crashed' && !r.homer ? r.crash * 10 : d };
   }
 
   function draw(now) {
@@ -399,7 +399,7 @@
         ctx.fillStyle = '#ffd166'; ctx.fillText('HOME RUN!', cx, cy);
         ctx.font = `800 ${Math.round(big * 0.45)}px system-ui, sans-serif`;
         ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)';
-        const t2 = `${r.fence.toFixed(1)} × 2 = ${fmtX(r.payout)}`;
+        const t2 = `${fieldName(r.field)} 全壘打 ${fmtX(r.payout)}`;
         ctx.strokeText(t2, cx, cy + big * 0.85); ctx.fillStyle = '#fff'; ctx.fillText(t2, cx, cy + big * 0.85);
       } else {
         const label = `飛行 ${(r.crash * 10).toFixed(1)} m`;

@@ -1,7 +1,7 @@
 /*
  * 全壘打大賽引擎（不碰 DOM）
  * 回合狀態機：betting → running（球在飛）→ crashed（接殺或全壘打）→ betting ...
- * 倍數 = 飛行距離(m) / 10；飛過全壘打牆 = 牆距倍數 × 2，本局結束。
+ * 倍數 = 飛行距離(m) / 10；飛過全壘打牆 = 該方向的全壘打倍數（左 18 / 中 24 / 右 20），本局結束。
  */
 (function (global) {
   'use strict';
@@ -17,7 +17,8 @@
     START_BALANCE: 1000,
     MIN_BET: 0.1,
     SALT: 'homerun',
-    STORE_KEY: 'homerun.v1',
+    STORE_KEY: 'homerun.v2',       // v2：全壘打倍數改 18/24/20（舊紀錄的公平性驗證算法不同）
+    OLD_STORE_KEY: 'homerun.v1',
   };
 
   const multAt = ms => Math.exp(CFG.GROWTH * Math.max(0, ms));
@@ -42,19 +43,19 @@
     return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  /* 外野切三等分，牆距（倍數 = 公尺 / 10） */
+  /* 外野切三等分：牆距（倍數 = 公尺 / 10）與全壘打派彩倍數 */
   const FIELDS = [
-    { key: 'LF', name: '左外野', fence: 11.0, from: -45, to: -15 },
-    { key: 'CF', name: '中外野', fence: 12.2, from: -15, to: 15 },
-    { key: 'RF', name: '右外野', fence: 11.4, from: 15, to: 45 },
+    { key: 'LF', name: '左外野', fence: 11.0, hr: 18, from: -45, to: -15 },
+    { key: 'CF', name: '中外野', fence: 12.2, hr: 24, from: -15, to: 15 },
+    { key: 'RF', name: '右外野', fence: 11.4, hr: 20, from: 15, to: 45 },
   ];
 
   /* 存活函數：球飛到 x 倍（x*10 公尺）還沒落地的機率。
-     60 m 內 = R/x（和原本 Crash 相同），之後乘上下墜係數 g，到牆邊剛好剩一半，
-     使「押全壘打」的期望值 2H × S(H) = R；任何策略的期望值都 ≤ R。 */
-  function survival(x, H) {
+     60 m 內 = R/x（和原本 Crash 相同），之後乘上下墜係數 g，到牆邊 g = H/P，
+     使「押全壘打」的期望值 P × S(H) = R；任何策略的期望值都 ≤ R。 */
+  function survival(x, H, P) {
     const x0 = CFG.DECAY_START;
-    const g = x <= x0 ? 1 : 1 - 0.5 * Math.pow((x - x0) / (H - x0), CFG.DECAY_K);
+    const g = x <= x0 ? 1 : 1 - (1 - H / P) * Math.pow((x - x0) / (H - x0), CFG.DECAY_K);
     return CFG.RTP * g / x;
   }
 
@@ -68,19 +69,19 @@
     const f = FIELDS[sector];
     // 角度避開分界 ±7.2°（畫面上牆在那裡圓滑銜接）；只影響畫面，不影響方向判定
     const angle = f.from + (0.24 + 0.52 * (v * 3 - sector)) * (f.to - f.from);
-    const H = f.fence;
+    const H = f.fence, P = f.hr;
     let dist, homer = false;
-    if (u <= CFG.RTP / (2 * H)) {
+    if (u <= CFG.RTP / P) {
       homer = true;
       dist = H;
     } else if (u > CFG.RTP / CFG.DECAY_START) {
       dist = Math.max(1, floor2(CFG.RTP / u));
     } else {
       let lo = CFG.DECAY_START, hi = H;
-      for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (survival(mid, H) > u) lo = mid; else hi = mid; }
+      for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (survival(mid, H, P) > u) lo = mid; else hi = mid; }
       dist = Math.min(floor2(lo), round2(H - 0.01));
     }
-    return { dist, homer, fence: H, field: f.key, angle, payout: homer ? round2(2 * H) : dist };
+    return { dist, homer, fence: H, field: f.key, angle, payout: homer ? P : dist };
   }
 
   /* ---------- 100 個暫代帳號 ---------- */
@@ -346,8 +347,13 @@
     load() {
       if (!this.store) return;
       try {
-        const d = JSON.parse(this.store.getItem(CFG.STORE_KEY) || 'null');
-        if (!d) return;
+        let d = JSON.parse(this.store.getItem(CFG.STORE_KEY) || 'null');
+        if (!d) {
+          d = JSON.parse(this.store.getItem(CFG.OLD_STORE_KEY) || 'null');
+          if (!d) return;
+          d.history = [];
+          if (d.player) d.player.history = [];
+        }
         Object.assign(this.player, d.player);
         Object.assign(this.settings, d.settings);
         this.history = d.history || [];
@@ -361,7 +367,7 @@
     }
 
     reset() {
-      try { if (this.store) this.store.removeItem(CFG.STORE_KEY); } catch (e) { /* ignore */ }
+      try { if (this.store) { this.store.removeItem(CFG.STORE_KEY); this.store.removeItem(CFG.OLD_STORE_KEY); } } catch (e) { /* ignore */ }
     }
   }
 
