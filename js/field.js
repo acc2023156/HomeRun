@@ -3,6 +3,7 @@
  * 世界座標（公尺）：本壘 = (0,0)，+y 朝中外野，+x 朝一壘／右外野，z 為高度。
  * 視角 A「本壘後方」：透視投影，鏡頭跟著球走（平移、轉向、仰角），小倍數時使用。
  * 視角 B「俯視全場」：距離 ≥ SWITCH_M 公尺時切換。
+ * 場上只有投手與打者：下注最後 1.5 秒投手投球 → 擊球瞬間打者揮棒；不判定接殺，只看距離或全壘打。
  */
 (function (global) {
   'use strict';
@@ -17,7 +18,7 @@
     dirt: '#c77a47', track: '#b8693a',
     line: '#ffffff', wall: '#0e5a3c', wallTop: '#f4c542',
     sky1: '#f3f5f7', sky2: '#cfd7de',
-    jersey: '#1d3f8f', ball: '#ffffff', seam: '#e5383b',
+    jersey: '#1d3f8f', ball: '#ffffff', seam: '#e5383b', helmet: '#c8102e',
   };
 
   // 規則上的牆距（依方向三等分）
@@ -44,11 +45,28 @@
   // 球的高度只跟「目前距離」有關，所有球同一條彈道，畫面不會提前透露落點
   const heightAt = d => 1 + d * 0.5 * (1 - d / 200);
 
-  const FIELDER_HOME = [
-    [0, 18.4], [0, -1.5], [15, 25], [9, 37], [-9, 37], [-15, 25],
-    polar(80, -30), polar(92, 0), polar(80, 30),
-  ];
-  const CATCHER = 1;
+  const MOUND = [0, 18.4];
+  const BATTER = [-1.25, -0.25];
+  const PITCH = { WINDUP: 1500, RELEASE: 600, SWING_LEAD: 180, SWING_MS: 440 }; // 以「下注剩餘毫秒」計
+
+  // 看台座位（世界座標固定，鏡頭移動時觀眾留在原地）
+  const SEAT_COLORS = ['#e9eef2', '#f2c14e', '#e5383b', '#4cc9f0', '#90be6d', '#f28482', '#8fa8c8', '#ffffff', '#43aa8b', '#2b3f5c'];
+  function makeSeats(fenceFn) {
+    let a = 926;
+    const rnd = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
+    const groups = SEAT_COLORS.map(() => []);
+    const ROWS = 24;
+    for (let r = 0; r < ROWS; r++) {
+      const t = (r + 0.5) / ROWS;
+      for (let deg = -74; deg <= 74; deg += 0.6) {
+        if (rnd() < 0.08) continue; // 零星空位
+        const d = fenceFn(deg) + 1 + 59 * t;
+        const j = (rnd() - 0.5) * 0.4;
+        groups[(rnd() * SEAT_COLORS.length) | 0].push([d * Math.sin((deg + j) * DEG), d * Math.cos((deg + j) * DEG), 3.5 + 28.5 * t + 0.4]);
+      }
+    }
+    return groups;
+  }
 
   const lerp = (a, b, k) => a + (b - a) * k;
 
@@ -61,8 +79,7 @@
       this.prevView = 'behind';
       this.viewChangedAt = -1e9;
       this.particles = [];
-      this.fielders = FIELDER_HOME.map(p => ({ home: p, pos: p.slice(), step: null }));
-      this.chaser = -1;
+      this.seats = makeSeats(fenceVis);
       this.cam = { x: 0, y: -10, z: 4, yaw: 0, hy: 0 };
       this.lastNow = 0;
       this.roundId = -1;
@@ -72,22 +89,7 @@
       this.W = W; this.H = H; this.dpr = dpr;
       this.cv.width = Math.round(W * dpr);
       this.cv.height = Math.round(H * dpr);
-      this.crowd = this.makeCrowd();
       this.cam.hy = 0.512 * H;
-    }
-
-    makeCrowd() {
-      const c = document.createElement('canvas');
-      c.width = 160; c.height = 60;
-      const g = c.getContext('2d');
-      g.fillStyle = '#2c4a5a'; g.fillRect(0, 0, c.width, c.height);
-      const colors = ['#e9eef2', '#f2c14e', '#e5383b', '#4cc9f0', '#90be6d', '#f28482', '#577590', '#ffffff', '#43aa8b'];
-      for (let i = 0; i < 900; i++) {
-        g.fillStyle = colors[(Math.random() * colors.length) | 0];
-        g.globalAlpha = 0.55 + Math.random() * 0.45;
-        g.fillRect(Math.random() * c.width, Math.random() * c.height, 2, 2);
-      }
-      return this.ctx.createPattern(c, 'repeat');
     }
 
     setView(v, now) {
@@ -105,16 +107,11 @@
       this.lastNow = now;
       if (state.roundId !== this.roundId) {
         this.roundId = state.roundId;
-        this.fielders.forEach(f => { f.pos = f.home.slice(); f.step = null; });
-        this.chaser = -1;
-        this.catchLocked = false;
-        this.catchKind = null;
         this.runStart = null;
         this.particles = [];
         this.fireworksUntil = 0;
       }
       if (state.phase === 'running' && this.runStart == null) this.runStart = now - (state.flightT || 0);
-      this.updateFielders(state, dt);
       this.updateCamera(state, dt);
       this.updateParticles(state, dt, now);
 
@@ -133,79 +130,26 @@
 
     drawView(v, s) { if (v === 'top') this.drawTop(s); else this.drawBehind(s); }
 
-    /* ---------- 守備員 ----------
-       擊球後全員往球的方向跨兩三步；之後由離球最近的那位負責：
-       先橫移到球的飛行線上（不往本壘衝），球飛過頭才跟著往後退。
-       結束時球若就在身邊 → 撲接；太遠 → 跑過去撿（落地出局）。 */
-    updateFielders(s, dt) {
-      const ball = s.ball;
-      this.fielders.forEach(f => { f.moving = false; });
-      if (!ball || s.phase === 'betting') return;
-      const ux = Math.sin(s.angle * DEG), uy = Math.cos(s.angle * DEG);
-      if (!this.fielders[0].step) {
-        this.fielders.forEach((f, i) => {
-          if (i === CATCHER) { f.step = f.home.slice(); return; }
-          const along = Math.max(0, f.home[0] * ux + f.home[1] * uy);
-          const dx = ux * along - f.home[0], dy = uy * along - f.home[1], d = Math.hypot(dx, dy) || 1;
-          const k = Math.min(2.4, d);
-          f.step = [f.home[0] + (dx / d) * k, f.home[1] + (dy / d) * k];
-        });
+    /* ---------- 投打時間軸 ----------
+       betLeft：下注剩餘毫秒（下注階段外為 -1）；runT：擊球後經過毫秒 */
+    timeline(s) {
+      const betLeft = s.phase === 'betting' ? s.betLeft : -1;
+      const runT = this.runStart == null ? -1 : this.lastNow - this.runStart;
+      // 投手姿勢
+      let pitch = 'idle', k = 0;
+      if (betLeft >= 0 && betLeft <= PITCH.WINDUP && betLeft > PITCH.RELEASE) { pitch = 'windup'; k = (PITCH.WINDUP - betLeft) / (PITCH.WINDUP - PITCH.RELEASE); }
+      else if ((betLeft >= 0 && betLeft <= PITCH.RELEASE) || (runT >= 0 && runT < 700)) pitch = 'throw';
+      // 投出去的球（放球 → 本壘）
+      let pball = null;
+      if (betLeft >= 0 && betLeft <= PITCH.RELEASE) {
+        const t = 1 - betLeft / PITCH.RELEASE;
+        pball = [lerp(0.35, -0.1, t), lerp(17.6, 0.3, t), lerp(1.9, 0.85, t) + Math.sin(Math.PI * t) * 0.35];
       }
-      const flightT = s.flightT || 0;
-      const ballR = Math.hypot(ball.x, ball.y);
-      if ((flightT > 600 || s.phase === 'crashed') && !this.catchLocked) {
-        let best = 1e9, pick = -1;
-        this.fielders.forEach((f, i) => {
-          if (i === CATCHER) return;
-          const d = Math.hypot(f.home[0] - ball.x, f.home[1] - ball.y);
-          if (d < best) { best = d; pick = i; }
-        });
-        this.chaser = pick;
-      }
-      if (s.phase === 'crashed' && !s.homer && !this.catchLocked && this.chaser >= 0) {
-        this.catchLocked = true;
-        const c = this.fielders[this.chaser];
-        this.catchKind = Math.hypot(c.pos[0] - ball.x, c.pos[1] - ball.y) <= 9 ? 'catch' : 'drop';
-      }
-      this.fielders.forEach((f, i) => {
-        let target = f.step, speed = 4;
-        if (i === this.chaser) {
-          if (s.phase === 'crashed' && s.homer) {
-            const a = Math.atan2(f.pos[0], f.pos[1]) / DEG;
-            target = polar(fenceVis(a) - 1.5, a); speed = 6;             // 追到牆邊目送
-          } else if (s.phase === 'crashed') {
-            target = [ball.x, ball.y];
-            speed = this.catchKind === 'catch' ? 22 : 9;                   // 撲接／跑去撿
-          } else {
-            const along = Math.max(f.home[0] * ux + f.home[1] * uy, ballR); // 只沿飛行線往外追
-            target = [ux * along, uy * along]; speed = 7.5;
-          }
-        } else if (this.chaser >= 0 && flightT > 600) {
-          target = null;                                                   // 其他人站定看球
-        }
-        if (!target) return;
-        const dx = target[0] - f.pos[0], dy = target[1] - f.pos[1], d = Math.hypot(dx, dy);
-        if (d > 0.05) {
-          const stp = Math.min(d, speed * dt);
-          f.pos[0] += (dx / d) * stp; f.pos[1] += (dy / d) * stp;
-          f.moving = stp > 0.01;
-        }
-        const r = Math.hypot(f.pos[0], f.pos[1]);
-        const lim = fenceVis(Math.atan2(f.pos[0], f.pos[1]) / DEG) - 1.5;
-        if (r > lim) { f.pos[0] *= lim / r; f.pos[1] *= lim / r; }
-      });
-    }
-
-    /* ---------- 打擊者：晃棒 → 揮棒 → 丟棒跑一壘 ---------- */
-    batterState(now) {
-      const start = [-1.25, -0.25];
-      if (this.runStart == null) return { pos: start, swing: -1, moving: false, t: now / 1000 };
-      const bt = now - this.runStart;
-      const swing = Math.min(1, bt / 260);
-      if (bt < 750) return { pos: start, swing, moving: false, t: now / 1000 };
-      const to = [19.4, 19.4], L = Math.hypot(to[0] - start[0], to[1] - start[1]);
-      const d = Math.min(L, ((bt - 750) / 1000) * 8);
-      return { pos: [start[0] + (to[0] - start[0]) * d / L, start[1] + (to[1] - start[1]) * d / L], swing: 2, moving: d < L, t: now / 1000 };
+      // 打者揮棒：接觸點在擊球瞬間（swing≈0.41），之後維持收棒姿勢
+      let swing = -1;
+      if (betLeft >= 0 && betLeft <= PITCH.SWING_LEAD) swing = (PITCH.SWING_LEAD - betLeft) / PITCH.SWING_MS;
+      else if (runT >= 0) swing = Math.min(1, (PITCH.SWING_LEAD + runT) / PITCH.SWING_MS);
+      return { pitch, windK: k, pball, swing, t: this.lastNow / 1000 };
     }
 
     /* ---------- 跟球鏡頭 ---------- */
@@ -335,7 +279,7 @@
         ctx.fillText(`×${(f.fence * 2).toFixed(1)}`, x, y + fs * 0.95);
       });
 
-      this.fielders.forEach((f, i) => this.dot(P(...f.pos), Math.max(3.5, 1.6 * sc), i === CATCHER ? '#666' : C.jersey, '#fff'));
+      this.dot(P(...MOUND), Math.max(3.5, 1.6 * sc), C.jersey, '#fff');
 
       const b = s.ball;
       if (b && s.phase !== 'betting') {
@@ -414,10 +358,21 @@
         for (let a = from; stepA > 0 ? a <= to : a >= to; a += stepA) pts.push([...polar(fenceVis(a) + extra, a), z]);
         return pts;
       };
-      if (path([...ringPts(60, 32, -75, 75, 2), ...ringPts(1, 3.5, 75, -75, -2)])) {
-        ctx.fillStyle = this.crowd; ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill();
-      }
+      poly([...ringPts(60, 32, -75, 75, 2), ...ringPts(1, 3.5, 75, -75, -2)], '#34505e');
+      // 觀眾：每個座位是固定在看台上的點，依距離決定大小
+      this.seats.forEach((grp, ci) => {
+        ctx.fillStyle = SEAT_COLORS[ci];
+        for (let i = 0; i < grp.length; i++) {
+          const p = grp[i], cc = toCam(p[0], p[1], p[2]);
+          if (cc[1] < NEAR) continue;
+          const sx = W / 2 + (f * cc[0]) / cc[1];
+          if (sx < -4 || sx > W + 4) continue;
+          const sy = cam.hy - (f * cc[2]) / cc[1];
+          if (sy < -4 || sy > H + 4) continue;
+          const w = Math.max(1.2, (f * 0.75) / cc[1]), h2 = Math.max(1.2, (f * 0.9) / cc[1]);
+          ctx.fillRect(sx - w / 2, sy - h2, w, h2);
+        }
+      });
       ctx.strokeStyle = 'rgba(210,220,228,.8)'; ctx.lineWidth = 2;
       [0.3, 0.63].forEach(k => {
         const pts = ringPts(1 + 59 * k, 3.5 + 28.5 * k, -75, 75, 3);
@@ -489,33 +444,30 @@
       poly([[-0.22, 0, 0], [0.22, 0, 0], [0.22, 0.22, 0], [0, 0.44, 0], [-0.22, 0.22, 0]], '#fff');
       [[19.4, 19.4], [0, 38.8], [-19.4, 19.4]].forEach(([x, y]) => poly([[x - 0.4, y, 0], [x, y + 0.4, 0], [x + 0.4, y, 0], [x, y - 0.4, 0]], '#fff'));
 
-      // 守備員與打擊者（遠的先畫，二頭身）
-      const bat = this.batterState(this.lastNow);
-      const people = this.fielders
-        .map((fd, i) => ({ kind: 'f', i, pos: fd.pos, moving: fd.moving }))
-        .filter(o => o.i !== CATCHER);
-      people.push({ kind: 'b', i: 0, pos: bat.pos, moving: bat.moving });
-      people
+      // 投手與打者（遠的先畫，二頭身）
+      const tl = this.timeline(s);
+      [
+        { kind: 'p', pos: MOUND },
+        { kind: 'b', pos: BATTER },
+      ]
         .map(o => ({ ...o, c: toCam(o.pos[0], o.pos[1], 0) }))
         .filter(o => o.c[1] >= NEAR + 0.5)
         .sort((a, b) => b.c[1] - a.c[1])
         .forEach(o => {
           const [x, y] = proj(o.c);
           const h = (f * 1.7) / o.c[1];
-          if (o.kind === 'b') { this.drawBatter(x, y, h, bat); return; }
-          this.chibi(x, y, h, {
-            front: true, moving: o.moving, t: this.lastNow / 1000 + o.i * 0.37,
-            catching: s.phase === 'crashed' && o.i === this.chaser && this.catchKind === 'catch',
-          });
+          if (o.kind === 'b') this.drawBatter(x, y, h, tl);
+          else this.chibi(x, y, h, { pose: tl.pitch, windK: tl.windK, t: tl.t });
         });
-      // 丟在本壘旁的球棒
-      if (bat.swing === 2) {
-        const p1 = P(-0.6, 0.4, 0.05), p2 = P(-1.4, 1.1, 0.05);
-        if (p1 && p2) {
-          ctx.strokeStyle = '#d9b27a'; ctx.lineCap = 'round';
-          ctx.lineWidth = Math.max(2, (f * 0.06) / Math.max(1, toCam(-1, 0.7, 0)[1]));
-          ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke();
+      // 投出去的球
+      if (tl.pball) {
+        const cg = toCam(tl.pball[0], tl.pball[1], 0), cb = toCam(...tl.pball);
+        if (cg[1] >= NEAR) {
+          const [sx, sy] = proj(cg);
+          ctx.fillStyle = 'rgba(0,0,0,.22)';
+          ctx.beginPath(); ctx.ellipse(sx, sy, (f * 0.3) / cg[1], (f * 0.1) / cg[1], 0, 0, Math.PI * 2); ctx.fill();
         }
+        if (cb[1] >= NEAR) this.ball(...proj(cb), Math.max(2.5, Math.min(14, (f * 0.12) / cb[1])));
       }
 
       // 球 + 影子
@@ -534,52 +486,49 @@
       }
     }
 
-    /* ---------- 二頭身球員（參考實況野球比例：大頭、帽子、短身體） ---------- */
+    /* ---------- 二頭身投手（參考實況野球比例：大頭、帽子、大眼、短身體；面向鏡頭） ---------- */
     chibi(x, y, h, o) {
       const c = this.ctx;
       if (h < 7) { this.dot([x, y - h * 0.5], Math.max(2, h * 0.3), C.jersey, '#fff'); return; }
-      const run = o.moving ? Math.sin(o.t * 16) : 0;
-      const bob = o.moving ? Math.abs(run) * h * 0.035 : 0;
+      const wind = o.pose === 'windup' ? Math.sin(Math.min(1, o.windK) * Math.PI) : 0; // 抬腿高度
       c.fillStyle = 'rgba(0,0,0,.28)';
       c.beginPath(); c.ellipse(x, y, h * 0.26, h * 0.065, 0, 0, Math.PI * 2); c.fill();
-      // 腿、鞋
-      [-1, 1].forEach((sd, k) => {
-        const sw = k ? -run : run;
+      // 腿、鞋（投球準備時抬起一腳）
+      [-1, 1].forEach(sd => {
+        const lift = sd > 0 ? wind * h * 0.14 : 0;
         c.fillStyle = '#f2f4f7';
-        this.rr(x + sd * h * 0.09 - h * 0.065, y - h * 0.22 - bob + sw * h * 0.03, h * 0.13, h * 0.2, h * 0.05); c.fill();
+        this.rr(x + sd * h * 0.09 - h * 0.065, y - h * 0.22 - lift, h * 0.13, h * 0.2, h * 0.05); c.fill();
         c.fillStyle = '#1b2433';
-        c.beginPath(); c.ellipse(x + sd * h * 0.09, y - h * 0.02 - bob + sw * h * 0.03, h * 0.08, h * 0.045, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(x + sd * h * 0.09, y - h * 0.02 - lift, h * 0.08, h * 0.045, 0, 0, Math.PI * 2); c.fill();
       });
       // 身體
+      const lean = o.pose === 'throw' ? h * 0.03 : 0;
       c.fillStyle = C.jersey;
-      this.rr(x - h * 0.19, y - h * 0.47 - bob, h * 0.38, h * 0.28, h * 0.11); c.fill();
-      c.fillStyle = '#f2f4f7'; c.fillRect(x - h * 0.17, y - h * 0.24 - bob, h * 0.34, h * 0.04);
+      this.rr(x - h * 0.19, y - h * 0.47 + lean, h * 0.38, h * 0.28, h * 0.11); c.fill();
+      c.fillStyle = '#f2f4f7'; c.fillRect(x - h * 0.17, y - h * 0.24, h * 0.34, h * 0.04);
       c.fillStyle = '#fff'; c.font = `900 ${Math.max(6, h * 0.12)}px system-ui, sans-serif`;
       c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('H', x, y - h * 0.35 - bob);
-      // 手臂＋手套（接殺時舉高）
-      const gy = o.catching ? y - h * 0.8 : y - h * 0.34 - bob - run * h * 0.03;
-      c.fillStyle = C.jersey;
-      c.beginPath(); c.arc(x + h * 0.21, y - h * 0.36 - bob + run * h * 0.03, h * 0.065, 0, Math.PI * 2); c.fill();
+      c.fillText('H', x, y - h * 0.35 + lean);
+      // 手：準備時雙手舉到頭上，投出時右手往前下方甩
+      let glove = [x + h * 0.23, y - h * 0.34], hand = [x - h * 0.21, y - h * 0.36];
+      if (o.pose === 'windup') { glove = [x + h * 0.08, y - h * (0.6 + 0.35 * wind)]; hand = [x - h * 0.06, y - h * (0.6 + 0.35 * wind)]; }
+      else if (o.pose === 'throw') { glove = [x + h * 0.2, y - h * 0.42]; hand = [x - h * 0.12, y - h * 0.22]; }
+      c.fillStyle = '#f7d7b5';
+      c.beginPath(); c.arc(hand[0], hand[1], h * 0.06, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#8a4b1f';
-      c.beginPath(); c.arc(x - h * 0.23, gy, h * 0.085, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(glove[0], glove[1], h * 0.085, 0, Math.PI * 2); c.fill();
       c.strokeStyle = '#5e3212'; c.lineWidth = Math.max(1, h * 0.012); c.stroke();
-      // 頭
-      const hx = x, hy = y - h * 0.72 - bob, R = h * 0.27;
+      // 頭＋大眼（沒有嘴巴）
+      const hx = x, hy = y - h * 0.72 + lean, R = h * 0.27;
       c.fillStyle = '#f7d7b5';
       c.beginPath(); c.arc(hx, hy, R, 0, Math.PI * 2); c.fill();
       c.strokeStyle = 'rgba(120,70,40,.35)'; c.lineWidth = Math.max(1, h * 0.01); c.stroke();
-      // 眼睛、腮紅、嘴
       [-1, 1].forEach(sd => {
         c.fillStyle = '#1b1b2a';
-        c.beginPath(); c.ellipse(hx + sd * R * 0.36, hy + R * 0.05, R * 0.12, R * 0.19, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(hx + sd * R * 0.36, hy + R * 0.12, R * 0.14, R * 0.22, 0, 0, Math.PI * 2); c.fill();
         c.fillStyle = '#fff';
-        c.beginPath(); c.arc(hx + sd * R * 0.36 - R * 0.04, hy - R * 0.03, R * 0.05, 0, Math.PI * 2); c.fill();
-        c.fillStyle = 'rgba(255,120,120,.35)';
-        c.beginPath(); c.ellipse(hx + sd * R * 0.58, hy + R * 0.32, R * 0.13, R * 0.07, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(hx + sd * R * 0.36 - R * 0.05, hy + R * 0.02, R * 0.06, 0, Math.PI * 2); c.fill();
       });
-      c.strokeStyle = '#9a4a3a'; c.lineWidth = Math.max(1, R * 0.06);
-      c.beginPath(); c.arc(hx, hy + R * 0.38, R * 0.12, 0.2, Math.PI - 0.2); c.stroke();
       // 帽子＋帽簷
       c.fillStyle = C.jersey;
       c.beginPath(); c.arc(hx, hy - R * 0.08, R * 1.02, Math.PI * 1.02, Math.PI * 1.98); c.closePath(); c.fill();
@@ -589,16 +538,15 @@
       c.fillText('H', hx, hy - R * 0.55);
     }
 
-    /* ---------- 打擊者（從背後看，右打，戴頭盔，揮棒） ---------- */
+    /* ---------- 打擊者（從背後看，右打，紅色頭盔；揮棒後留在原地） ---------- */
     drawBatter(x, y, h, st) {
       const c = this.ctx;
       if (h < 7) { this.dot([x, y - h * 0.5], Math.max(2, h * 0.3), '#e5383b', '#fff'); return; }
-      const run = st.moving ? Math.sin(st.t * 16) : 0;
-      const bob = st.moving ? Math.abs(run) * h * 0.035 : 0;
+      const run = 0, bob = 0;
       c.fillStyle = 'rgba(0,0,0,.28)';
       c.beginPath(); c.ellipse(x, y, h * 0.28, h * 0.07, 0, 0, Math.PI * 2); c.fill();
-      [-1, 1].forEach((sd, k) => {
-        const sw = k ? -run : run;
+      [-1, 1].forEach(sd => {
+        const sw = run;
         c.fillStyle = '#f2f4f7';
         this.rr(x + sd * h * 0.1 - h * 0.065, y - h * 0.22 - bob + sw * h * 0.03, h * 0.13, h * 0.2, h * 0.05); c.fill();
         c.fillStyle = '#1b2433';
@@ -612,10 +560,10 @@
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText('88', x, y - h * 0.34 - bob);
       // 球棒：握點在右肩前
-      if (st.swing < 2) {
+      {
         let ang;
-        if (st.swing < 0) ang = -118 + Math.sin(st.t * 3) * 6;                   // 等待：小幅晃棒
-        else { const k = 1 - Math.pow(1 - st.swing, 3); ang = -118 + 318 * k; }  // 揮棒到收棒
+        if (st.swing < 0) ang = -118 + Math.sin(st.t * 3) * 6;  // 等待：小幅晃棒
+        else ang = -118 + 318 * st.swing;                      // 揮棒（擊球瞬間約在正前方）到收棒
         const px = x + h * 0.16, py = y - h * 0.5 - bob, L = h * 0.78, a = ang * DEG;
         c.lineCap = 'round';
         c.strokeStyle = '#c99a5b'; c.lineWidth = Math.max(2, h * 0.07);
@@ -625,11 +573,11 @@
         c.fillStyle = '#f7d7b5';
         c.beginPath(); c.arc(px, py, h * 0.06, 0, Math.PI * 2); c.fill();
       }
-      // 頭盔（深藍亮面＋護耳）
+      // 頭盔（紅色亮面＋護耳）
       const hx = x, hy = y - h * 0.73 - bob, R = h * 0.28;
       c.fillStyle = '#f7d7b5';
       c.beginPath(); c.arc(hx, hy + R * 0.15, R * 0.92, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#16306a';
+      c.fillStyle = C.helmet;
       c.beginPath(); c.arc(hx, hy, R, Math.PI * 0.92, Math.PI * 2.08); c.closePath(); c.fill();
       c.beginPath(); c.ellipse(hx - R * 0.78, hy + R * 0.22, R * 0.3, R * 0.36, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = 'rgba(255,255,255,.35)';

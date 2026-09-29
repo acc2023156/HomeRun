@@ -74,7 +74,7 @@
     if (r.homer) { Sound.homer(); field.startFireworks(performance.now()); } else Sound.crash();
     const mine = r.bets.find(b => b.isPlayer);
     if (mine && !mine.cashedAt) Sound.lose();
-    if (mine && !mine.cashedAt) toast(`${r.crash < 3 ? '內野出局' : '接殺'} ${(r.crash * 10).toFixed(1)} m　−${fmt(mine.amount)}`, 'lose');
+    if (mine && !mine.cashedAt) toast(`球落地 ${(r.crash * 10).toFixed(1)} m　−${fmt(mine.amount)}`, 'lose');
   });
   eng.on('auto', () => { syncModeUI(); });
 
@@ -108,7 +108,7 @@
     const crashed = r.phase === 'crashed';
     el.betList.innerHTML = bets.map(b => {
       const cls = b.cashedAt ? 'won' : crashed ? 'lost' : '';
-      const mult = b.cashedAt ? (b.homer ? 'HR ' : '') + fmtX(b.cashedAt) : crashed ? '出局' : b.target >= 99 ? 'HR?' : '-';
+      const mult = b.cashedAt ? (b.homer ? 'HR ' : '') + fmtX(b.cashedAt) : crashed ? '未兌現' : b.target >= 99 ? 'HR?' : '-';
       const pay = b.cashedAt ? '+' + fmt(b.payout) : crashed ? '−' + fmt(b.amount) : '-';
       return `<div class="row ${cls} ${b.isPlayer ? 'me' : ''}">${nameCell(b)}<span>${fmt(b.amount)}</span><span class="mult">${mult}</span><span class="pay">${pay}</span></div>`;
     }).join('');
@@ -126,7 +126,7 @@
     if (!h.length) { el.mineList.innerHTML = `<div class="empty">還沒有紀錄，下一注吧！</div>`; return; }
     el.mineList.innerHTML = h.map(x =>
       `<div class="row ${x.cashedAt ? 'won' : 'lost'}"><span>#${x.id}</span><span>${fmt(x.amount)}</span>` +
-      `<span class="mult">${x.cashedAt ? (x.homer ? 'HR ' : '') + fmtX(x.cashedAt) : '出局 ' + (x.crash * 10).toFixed(0) + 'm'}</span><span class="pay">${signed(x.profit)}</span></div>`).join('');
+      `<span class="mult">${x.cashedAt ? (x.homer ? 'HR ' : '') + fmtX(x.cashedAt) : '落地 ' + (x.crash * 10).toFixed(0) + 'm'}</span><span class="pay">${signed(x.profit)}</span></div>`).join('');
   }
 
   $('#tabs').addEventListener('click', e => {
@@ -301,12 +301,12 @@
   new ResizeObserver(resize).observe(cv.parentElement);
   resize();
 
-  // 球的位置：飛行中只依目前距離計算；結束後播放接殺下墜或飛進看台
+  // 球的位置：飛行中只依目前距離計算；結束後球落地彈跳，或飛進看台
   function ballState(now) {
     const r = eng.round;
     if (r.phase === 'betting') return null;
     const t = now - r.phaseStart;
-    let d, z, catching = false;
+    let d, z;
     if (r.phase === 'running') {
       const m = Math.min(multAt(t), r.crash);
       d = m * 10 * Math.min(1, 0.25 + t / 400);
@@ -318,14 +318,15 @@
         d = dEnd + 38 * k;
         z = h0 + (16 - h0) * k * k;
       } else {
-        const k = Math.min(1, t / 450);
-        d = dEnd + 2 * k;
-        z = h0 + (1.6 - h0) * k;
-        catching = true;
+        // 下墜落地 → 小彈跳 → 滾一小段
+        const fall = Math.min(1, t / 700);
+        d = dEnd + 7 * Math.min(1, t / 1600);
+        if (t < 700) z = h0 * (1 - fall * fall);
+        else { const tb = (t - 700) / 450; z = tb < 1 ? 1.4 * Math.sin(Math.PI * tb) : 0; }
       }
     }
     const [x, y] = polar(d * visScale(r.angle), r.angle);
-    return { x, y, z, d, catching };
+    return { x, y, z, d };
   }
 
   function draw(now) {
@@ -337,9 +338,10 @@
 
     let scoreboard = 'ROUND ' + r.id;
     if (r.phase === 'running' && ball) scoreboard = ball.d.toFixed(1) + ' m';
-    else if (r.phase === 'crashed') scoreboard = r.homer ? 'HOME RUN!' : 'OUT';
+    else if (r.phase === 'crashed') scoreboard = r.homer ? 'HOME RUN!' : (r.crash * 10).toFixed(1) + ' m';
     field.render({
-      roundId: r.id, phase: r.phase, field: r.field, angle: r.angle, homer: r.homer, ball, catching: ball && ball.catching,
+      roundId: r.id, phase: r.phase, field: r.field, angle: r.angle, homer: r.homer, ball,
+      betLeft: r.phase === 'betting' ? Math.max(0, CFG.BET_MS - (now - r.phaseStart)) : -1,
       flightT: r.phase === 'running' ? now - r.phaseStart : 99999,
       celebrate: r.phase === 'crashed' && r.homer, scoreboard,
     }, now);
@@ -360,6 +362,12 @@
 
     if (r.phase === 'betting') {
       const left = Math.max(0, CFG.BET_MS - (now - r.phaseStart));
+      if (left <= 1500) {
+        pill(cx, 22, big * 2.6, big * 0.5, 'rgba(10,25,35,.72)');
+        ctx.fillStyle = '#ffd166'; ctx.font = `800 ${Math.round(big * 0.28)}px system-ui, sans-serif`;
+        ctx.fillText('PLAY BALL!', cx, 22);
+        return;
+      }
       const cy = H * 0.42;
       pill(cx, cy, Math.min(W * 0.7, big * 5.4), big * 2.3, 'rgba(10,25,35,.72)');
       ctx.fillStyle = '#cfd8e3';
@@ -389,10 +397,10 @@
         const t2 = `${r.fence.toFixed(1)} × 2 = ${fmtX(r.payout)}`;
         ctx.strokeText(t2, cx, cy + big * 0.85); ctx.fillStyle = '#fff'; ctx.fillText(t2, cx, cy + big * 0.85);
       } else {
-        const label = r.crash < 3 ? '內野出局' : field.catchKind === 'drop' ? '落地出局' : '接殺！';
+        const label = `飛行 ${(r.crash * 10).toFixed(1)} m`;
         ctx.font = `900 ${Math.round(big * 0.8)}px system-ui, sans-serif`;
         ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(label, cx, cy);
-        ctx.fillStyle = '#ff6b6b'; ctx.fillText(label, cx, cy);
+        ctx.fillStyle = '#fff'; ctx.fillText(label, cx, cy);
       }
     }
 

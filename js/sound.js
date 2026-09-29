@@ -1,4 +1,4 @@
-/* 合成音效（Web Audio，不需音檔）：擊球、觀眾聲浪、接殺、全壘打歡呼。第一次使用者操作後才建立 AudioContext */
+/* 合成音效（Web Audio，不需音檔）：擊球、飛行、落地、全壘打歡呼。第一次使用者操作後才建立 AudioContext */
 (function (global) {
   'use strict';
   let ctx = null;
@@ -104,10 +104,10 @@
       tone(1400 + Math.random() * 500, { dur: 0.04, type: 'sine', gain: 0.025 });
     },
     win() { [784, 988, 1175, 1568].forEach((f, i) => tone(f, { at: i * 0.07, dur: 0.16, type: 'triangle', gain: 0.1 })); },
-    crash() { // 接殺：手套「啪」＋觀眾嘆氣
-      noise({ dur: 0.08, gain: 0.45, from: 1800, to: 300 });
-      tone(160, { dur: 0.1, type: 'sine', gain: 0.18, slide: 0.6 });
-      noise({ at: 0.12, dur: 1.1, gain: 0.14, from: 900, to: 350, type: 'bandpass', q: 2 });
+    crash() { // 球落地：草地「咚」（配合 0.7 秒的下墜動畫）＋觀眾嘆氣
+      noise({ at: 0.68, dur: 0.1, gain: 0.3, from: 900, to: 150 });
+      tone(120, { at: 0.68, dur: 0.12, type: 'sine', gain: 0.16, slide: 0.6 });
+      noise({ at: 0.2, dur: 1.1, gain: 0.12, from: 900, to: 350, type: 'bandpass', q: 2 });
     },
     homer() { // 全壘打：觀眾歡呼（音檔，降 30%）＋輕號角＋煙火
       const ac = enabled && audio();
