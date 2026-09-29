@@ -1,7 +1,8 @@
 (function () {
   'use strict';
   const { CFG, STYLES, FIELDS, Engine, multAt, outcomeFromSeed, floor2 } = window.Crash;
-  const { heightAt, polar, visScale, SWITCH_M } = window.FieldMath;
+  const { heightAt, polar, visScale } = window.FieldMath;
+  const SWING_TO_TOP_MS = 300; // 擊球後揮完棒就切俯視
 
   let store = null;
   try { store = window.localStorage; store.setItem('__t', '1'); store.removeItem('__t'); } catch (e) { store = null; }
@@ -334,7 +335,7 @@
     const r = eng.round;
     const ball = ballState(now);
     if (r.phase === 'betting') field.setView('behind', now);
-    else if (r.phase === 'running' && ball && ball.d >= SWITCH_M) field.setView('top', now);
+    else if (r.phase === 'crashed' || now - r.phaseStart >= SWING_TO_TOP_MS) field.setView('top', now);
 
     let scoreboard = 'ROUND ' + r.id;
     if (r.phase === 'running' && ball) scoreboard = ball.d.toFixed(1) + ' m';
@@ -362,25 +363,30 @@
 
     if (r.phase === 'betting') {
       const left = Math.max(0, CFG.BET_MS - (now - r.phaseStart));
+      const canBet = !eng.myBet() && !eng.auto.on;
       if (left <= 1500) {
-        pill(cx, 22, big * 2.6, big * 0.5, 'rgba(10,25,35,.72)');
-        ctx.fillStyle = '#ffd166'; ctx.font = `800 ${Math.round(big * 0.28)}px system-ui, sans-serif`;
-        ctx.fillText('PLAY BALL!', cx, 22);
+        pill(cx, 24, big * 3.6, big * 0.6, 'rgba(10,25,35,.78)');
+        ctx.fillStyle = '#ffd166'; ctx.font = `800 ${Math.round(big * 0.32)}px system-ui, sans-serif`;
+        ctx.fillText(`投球倒數 ${(left / 1000).toFixed(1)}s`, cx, 24);
+        if (canBet) hint('點擊畫面下注', H - 26);
         return;
       }
       const cy = H * 0.42;
       pill(cx, cy, Math.min(W * 0.7, big * 5.4), big * 2.3, 'rgba(10,25,35,.72)');
       ctx.fillStyle = '#cfd8e3';
       ctx.font = `600 ${Math.round(big * 0.3)}px system-ui, sans-serif`;
-      ctx.fillText('下一位打者上場', cx, cy - big * 0.55);
+      ctx.fillText('投球倒數', cx, cy - big * 0.55);
       ctx.fillStyle = '#fff';
       ctx.font = `800 ${Math.round(big * 0.85)}px system-ui, sans-serif`;
       ctx.fillText((left / 1000).toFixed(1) + 's', cx, cy + big * 0.2);
       const bw = Math.min(W * 0.5, 300), by = cy + big * 0.85;
       ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(cx - bw / 2, by, bw, 5);
       ctx.fillStyle = '#ffd166'; ctx.fillRect(cx - bw / 2, by, bw * (left / CFG.BET_MS), 5);
+      if (canBet) hint('點擊畫面下注', cy + big * 1.45);
       return;
     }
+    // 打擊視角不顯示飛行距離，切到俯視才開始量
+    if (field.view !== 'top') return;
 
     const m = r.phase === 'running' ? floor2(Math.min(multAt(now - r.phaseStart), r.crash)) : r.crash;
 
@@ -417,6 +423,7 @@
     ctx.fillStyle = '#cfd8e3';
     ctx.fillText(`${(r.phase === 'crashed' ? r.crash * 10 : m * 10).toFixed(1)} m`, cx + big * 1.55, by - big * 0.08);
     const mine = eng.myBet();
+    if (mine && !mine.cashedAt && r.phase === 'running') hint('點擊畫面兌現', by - big * 1.15, '#ff9f1c');
     if (mine && mine.cashedAt) {
       const txt = `${mine.homer ? '全壘打 ' : '已兌現 '}${fmtX(mine.cashedAt)}  +${fmt(mine.payout - mine.amount)}`;
       ctx.font = `700 ${Math.round(big * 0.3)}px system-ui, sans-serif`;
@@ -426,6 +433,27 @@
     }
     if (cornerHud) ctx.restore();
   }
+  function hint(txt, y, color = '#00e701') {
+    ctx.font = `800 ${Math.max(12, Math.round(Math.min(W * 0.035, 17)))}px system-ui, sans-serif`;
+    const w = ctx.measureText(txt).width + 28, hh = Math.max(24, Math.min(W * 0.035, 17) + 14);
+    const a = 0.75 + 0.25 * Math.sin(performance.now() / 220);
+    ctx.globalAlpha = a;
+    pill(W / 2, y, w, hh, color);
+    ctx.fillStyle = color === '#00e701' ? '#05260a' : '#2b1600';
+    ctx.fillText(txt, W / 2, y);
+    ctx.globalAlpha = 1;
+  }
+  // 點擊畫面：打擊視角＝下注；俯視＝兌現
+  cv.addEventListener('click', () => {
+    const now = performance.now(), r = eng.round, bet = eng.myBet();
+    if (field.view === 'behind' && r.phase === 'betting') {
+      if (bet || eng.auto.on) return;
+      if (mode === 'auto') eng.startAuto({ amount: readAmount(), target: readTarget(), count: +el.autoCount.value, winPct: +el.onWin.value, lossPct: +el.onLoss.value });
+      else eng.placeBet(readAmount(), readTarget());
+    } else if (field.view === 'top' && r.phase === 'running' && bet && !bet.cashedAt) {
+      eng.cashOut(now);
+    }
+  });
   function roundRect(x, y, w, h, rad) {
     ctx.beginPath();
     ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad);
