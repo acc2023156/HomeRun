@@ -25,6 +25,8 @@
 
   const toUnits = coins => String(Math.round(coins * 100) * 10);
   const fromMoney = money => Number(money.units) / 10 ** money.scale;
+  // 投手開始投球（下注倒數最後 1.5 秒）時就向伺服器開局
+  const EARLY_START_MS = 1500;
 
   // 畫面上的其他玩家（示範）：固定 100 個帳號
   function makeAccounts() {
@@ -154,33 +156,42 @@
       this.emit('balance');
     }
 
-    // 有下注：向伺服器開局（扣 GDBO 錢包），開局即公開擊球方向
-    async launchRemote(now) {
+    // 有下注：投手開始投球時就向伺服器開局（扣 GDBO 錢包），約定在下注倒數結束（擊球瞬間）才開始，
+    // 伺服器回應趕在投球動畫期間回來，揮棒後直接接上飛球，不必停下來等
+    async launchRemote(startInMs) {
       const r = this.round, bet = this.myBet();
-      // 等伺服器開局時畫面停在下注階段的最後一刻
       r.launching = true;
       try {
         const res = await this.api('/games/home-run/rounds', {
           request_id: global.crypto.randomUUID(), commitment_id: this.commitment.id,
-          wager: { units: toUnits(bet.amount), currency: 'TWD', scale: 3 }
+          wager: { units: toUnits(bet.amount), currency: 'TWD', scale: 3 },
+          start_in_ms: Math.max(0, Math.round(startInMs))
         });
-        Object.assign(r, {
-          serverId: res.round.id, remote: true, hash: res.fairness.server_seed_hash, proofToken: res.fairness.proof_token,
-          field: res.round.field, angle: res.round.angle, fence: res.round.fence, phase: 'running',
-          phaseStart: performance.now() - Math.max(0, Date.now() - Date.parse(res.round.started_at)),
-        });
+        // 以伺服器自己的時間換算還有多久開始，不受本機時鐘誤差影響
+        const startsIn = Date.parse(res.round.started_at) - Date.parse(res.round.server_time || res.round.started_at);
+        r.ready = { res, startAt: performance.now() + startsIn };
         this.player.balance = fromMoney(res.balance);
         this.emit('balance');
-        this.emit('run', r);
-        this.nextPoll = 0;
       } catch (e) {
         this.player.balance = round2(this.player.balance + bet.amount);
         r.bets.splice(r.bets.indexOf(bet), 1);
+        r.launching = false;
         this.emit('balance');
+        this.emit('bet', null);
         if (this.auto.on) this.stopAuto();
         this.fail(`開局失敗：${e.message}`);
-        this.runDemo(now);
       }
+    }
+
+    // 下注倒數結束：開始已向伺服器開好的回合
+    startRemote(r) {
+      const { res, startAt } = r.ready;
+      Object.assign(r, {
+        serverId: res.round.id, remote: true, hash: res.fairness.server_seed_hash, proofToken: res.fairness.proof_token,
+        field: res.round.field, angle: res.round.angle, fence: res.round.fence, phase: 'running', phaseStart: startAt,
+      });
+      this.emit('run', r);
+      this.nextPoll = 0;
     }
 
     // 沒下注：本機隨機一局當畫面示範（不計入紀錄）
@@ -273,9 +284,11 @@
       const el = now - r.phaseStart;
       if (r.phase === 'betting') {
         while (r.pending.length && r.pending[0].at <= el) this.joinBot(r.pending.shift());
-        if (el >= CFG.BET_MS && !r.launching) {
+        if (!r.launching && this.myBet() && this.commitment && el >= CFG.BET_MS - EARLY_START_MS) this.launchRemote(CFG.BET_MS - el);
+        // 伺服器還沒回應時停在擊球前一刻等（網路很慢時才會發生）
+        if (el >= CFG.BET_MS && (!r.launching || r.ready)) {
           while (r.pending.length) this.joinBot(r.pending.shift());
-          if (this.myBet() && this.commitment) this.launchRemote(now);
+          if (r.ready) this.startRemote(r);
           else this.runDemo(now);
         }
       } else if (r.phase === 'running') {
