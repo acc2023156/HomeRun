@@ -90,7 +90,7 @@
   }
   el.history.addEventListener('click', e => {
     const b = e.target.closest('[data-round]');
-    if (b) openFair(+b.dataset.round);
+    if (b) openFair(b.dataset.round);
   });
 
   /* ---------- lists ---------- */
@@ -284,12 +284,12 @@
     el.fairCurrent.innerHTML = `目前第 <b>${r.id}</b> 局 hash：<br><code>${r.hash}</code><br>` +
       (r.phase === 'crashed' ? `seed：<code>${r.seed}</code>` : '<span class="hint">seed 將在本局結束後公開</span>');
     el.fairList.innerHTML = eng.history.map(h =>
-      `<details ${h.id === focusId ? 'open' : ''} data-id="${h.id}"><summary><span>#${h.id}</span><b class="chip ${chipClass(h.crash, h.homer)}">${chipText(h)}</b></summary>` +
+      `<details ${String(h.id) === String(focusId) ? 'open' : ''} data-id="${h.id}"><summary><span>#${h.id}</span><b class="chip ${chipClass(h.crash, h.homer)}">${chipText(h)}</b></summary>` +
       `<div class="kv">hash：<code>${h.hash}</code></div><div class="kv">seed：<code>${h.seed}</code></div>` +
       `<div class="kv verify"></div></details>`).join('') || '<div class="empty">尚無已結束的局</div>';
     el.fairList.querySelectorAll('details').forEach(d => {
       const run = () => {
-        const h = eng.history.find(x => x.id === +d.dataset.id);
+        const h = eng.history.find(x => String(x.id) === d.dataset.id);
         const hashOk = window.sha256(h.seed) === h.hash;
         const o = outcomeFromSeed(h.seed, h.id);
         const same = o.dist === h.crash && o.homer === !!h.homer && (!h.field || o.field === h.field);
