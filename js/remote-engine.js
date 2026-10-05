@@ -200,7 +200,8 @@
           headers: { authorization: `Bearer ${r.proofToken}` }, cache: 'no-store'
         });
         const proof = await res.json();
-        if (proof.reveal && this.round === r) this.finishRemote(proof, performance.now());
+        // 兌現請求還在路上時先不結束這局，等它的結果回來再公開
+        if (proof.reveal && this.round === r && !r.cashing) this.finishRemote(proof, performance.now());
       } catch (e) {
         // 輪詢失敗不影響伺服器上的結果，下次再查
       } finally {
@@ -226,17 +227,32 @@
       const r = this.round, bet = this.myBet();
       if (r.phase !== 'running' || !r.remote || !bet || bet.cashedAt || r.cashing) return;
       r.cashing = true;
+      const elapsed = performance.now() - r.phaseStart;
+      // 先以按下時的倍數顯示兌現，伺服器確認後更新金額與餘額；被拒絕（已落地）時撤回
+      bet.pending = true;
+      this.settleCash(bet, floor2(multAt(elapsed)));
+      const shownPayout = bet.payout;
       try {
         const res = await this.api(`/games/home-run/rounds/${encodeURIComponent(r.serverId)}/cashout`, {
           request_id: global.crypto.randomUUID(),
           // 按下時離開局幾毫秒：伺服器以此時的倍數結算（最多補償 300ms 網路延遲）
-          elapsed_ms: Math.round(performance.now() - r.phaseStart)
+          elapsed_ms: Math.round(elapsed)
         });
-        this.player.balance = fromMoney(res.balance) - fromMoney(res.round.payout);
         this.commitment = res.next_commitment;
-        this.settleCash(bet, Number(res.round.cashed_at), false, fromMoney(res.round.payout));
+        bet.cashedAt = Number(res.round.cashed_at);
+        bet.payout = fromMoney(res.round.payout);
+        this.player.balance = fromMoney(res.balance);
+        bet.pending = false;
+        this.emit('cashout-confirm', bet);
+        this.emit('balance');
       } catch (e) {
-        if (e.code === 'ROUND_CRASHED' || e.code === 'ROUND_FINISHED') this.pollRemote();
+        bet.cashedAt = null;
+        bet.payout = 0;
+        bet.pending = false;
+        this.player.balance = round2(this.player.balance - shownPayout);
+        this.emit('cashout-undo', bet);
+        this.emit('balance');
+        if (e.code === 'ROUND_CRASHED' || e.code === 'ROUND_FINISHED') { this.fail('來不及兌現，球已落地'); this.pollRemote(); }
         else this.fail(`兌現失敗：${e.message}`);
       } finally {
         r.cashing = false;
