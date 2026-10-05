@@ -9,7 +9,8 @@
 
   const eng = new Engine(store);
   const $ = s => document.querySelector(s);
-  const fmt = v => (+v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // 金額顯示兩位小數、無條件捨去（與大廳、GDBO 一致）
+  const fmt = v => (Math.trunc(Math.round(+v * 1000) / 10) / 100 || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtX = v => v.toFixed(2) + '×';
   const signed = v => (v >= 0 ? '+' : '') + fmt(v);
   const fmtT = t => (t >= 99 ? 'HR' : fmtX(t));
