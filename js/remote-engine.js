@@ -227,7 +227,11 @@
       if (r.phase !== 'running' || !r.remote || !bet || bet.cashedAt || r.cashing) return;
       r.cashing = true;
       try {
-        const res = await this.api(`/games/home-run/rounds/${encodeURIComponent(r.serverId)}/cashout`, { request_id: global.crypto.randomUUID() });
+        const res = await this.api(`/games/home-run/rounds/${encodeURIComponent(r.serverId)}/cashout`, {
+          request_id: global.crypto.randomUUID(),
+          // 按下時離開局幾毫秒：伺服器以此時的倍數結算（最多補償 300ms 網路延遲）
+          elapsed_ms: Math.round(performance.now() - r.phaseStart)
+        });
         this.player.balance = fromMoney(res.balance) - fromMoney(res.round.payout);
         this.commitment = res.next_commitment;
         this.settleCash(bet, Number(res.round.cashed_at), false, fromMoney(res.round.payout));
