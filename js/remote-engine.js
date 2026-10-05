@@ -27,6 +27,7 @@
   const fromMoney = money => Number(money.units) / 10 ** money.scale;
   // 投手開始投球（下注倒數最後 1.5 秒）時就向伺服器開局
   const EARLY_START_MS = 1500;
+  const AUTO_MARGIN_MS = 40;
 
   // 畫面上的其他玩家（示範）：固定 100 個帳號
   function makeAccounts() {
@@ -161,15 +162,17 @@
     async launchRemote(startInMs) {
       const r = this.round, bet = this.myBet();
       r.launching = true;
+      const sentAt = performance.now();
+      startInMs = Math.max(0, Math.round(startInMs));
       try {
         const res = await this.api('/games/home-run/rounds', {
           request_id: global.crypto.randomUUID(), commitment_id: this.commitment.id,
           wager: { units: toUnits(bet.amount), currency: 'TWD', scale: 3 },
-          start_in_ms: Math.max(0, Math.round(startInMs))
+          start_in_ms: startInMs
         });
-        // 以伺服器自己的時間換算還有多久開始，不受本機時鐘誤差影響
-        const startsIn = Date.parse(res.round.started_at) - Date.parse(res.round.server_time || res.round.started_at);
-        r.ready = { res, startAt: performance.now() + startsIn };
+        // 開始時間從送出請求時起算，不從收到回應時起算，否則揮棒後還要多等一趟網路。
+        // 伺服器從收到請求起算，本機因此早了單程網路時間；兌現請求抵達時兩邊的經過時間正好相同
+        r.ready = { res, startAt: sentAt + startInMs };
         this.player.balance = fromMoney(res.balance);
         this.emit('balance');
       } catch (e) {
@@ -188,7 +191,8 @@
       const { res, startAt } = r.ready;
       Object.assign(r, {
         serverId: res.round.id, remote: true, hash: res.fairness.server_seed_hash, proofToken: res.fairness.proof_token,
-        field: res.round.field, angle: res.round.angle, fence: res.round.fence, phase: 'running', phaseStart: startAt,
+        // 不讓飛行時間變成負數（回應晚到時從現在開始飛）
+        field: res.round.field, angle: res.round.angle, fence: res.round.fence, phase: 'running', phaseStart: Math.min(startAt, performance.now()),
       });
       this.emit('run', r);
       this.nextPoll = 0;
@@ -236,7 +240,7 @@
 
     async cashOut() {
       const r = this.round, bet = this.myBet();
-      if (r.phase !== 'running' || !r.remote || !bet || bet.cashedAt || r.cashing) return;
+      if (r.phase !== 'running' || !r.remote || !bet || bet.cashedAt || bet.rejected || r.cashing) return;
       r.cashing = true;
       const elapsed = performance.now() - r.phaseStart;
       // 先以按下時的倍數顯示兌現，伺服器確認後更新金額與餘額；被拒絕（已落地）時撤回
@@ -263,8 +267,9 @@
         this.player.balance = round2(this.player.balance - shownPayout);
         this.emit('cashout-undo', bet);
         this.emit('balance');
-        if (e.code === 'ROUND_CRASHED' || e.code === 'ROUND_FINISHED') { this.fail('來不及兌現，球已落地'); this.pollRemote(); }
-        else this.fail(`兌現失敗：${e.message}`);
+        // 球已落地就不再重送；其他錯誤（例如網路）1 秒後才允許自動兌現再試，避免每格畫面重送
+        if (e.code === 'ROUND_CRASHED' || e.code === 'ROUND_FINISHED') { bet.rejected = true; this.fail('來不及兌現，球已落地'); this.pollRemote(); }
+        else { bet.retryAt = performance.now() + 1000; this.fail(`兌現失敗：${e.message}`); }
       } finally {
         r.cashing = false;
       }
@@ -299,7 +304,8 @@
           .forEach(b => this.settleCash(b, b.target));
         const mine = this.myBet();
         if (r.remote) {
-          if (mine && mine.target && !mine.cashedAt && mine.target < r.fence && floor2(m) >= mine.target) this.cashOut();
+          // 自動兌現晚 40ms 才送，網路抖動時伺服器結算的倍數仍不低於目標
+          if (mine && mine.target && !mine.cashedAt && !(mine.retryAt > now) && mine.target < r.fence && floor2(multAt(el - AUTO_MARGIN_MS)) >= mine.target) this.cashOut();
           if (now >= this.nextPoll) { this.nextPoll = now + 250; this.pollRemote(); }
         } else if (m >= r.crash) {
           if (r.homer) r.bets.filter(b => !b.cashedAt).forEach(b => this.settleCash(b, r.payout, true));
