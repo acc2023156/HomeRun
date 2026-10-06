@@ -275,12 +275,45 @@
         ctx.font = `800 ${fs}px system-ui, sans-serif`;
         ctx.fillStyle = active ? '#ffe27a' : 'rgba(255,255,255,.9)';
         ctx.fillText(`${f.fence * 10} m`, x, y);
+        if (s.derby) return; // 全壘打競賽沒有各方向的全壘打倍數
         ctx.font = `700 ${fs * 0.75}px system-ui, sans-serif`;
         ctx.fillStyle = active ? '#ffe27a' : 'rgba(255,255,255,.7)';
         ctx.fillText(`×${f.hr}`, x, y + fs * 0.95);
       });
 
       this.dot(P(...MOUND), Math.max(3.5, 1.6 * sc), C.jersey, '#fff');
+
+      // 全壘打競賽：已打出的球的落點（全壘打金色星星、其餘白點）與目前這球的彈道弧線
+      (s.marks || []).forEach(m => {
+        const [mx, my] = P(m.x, m.y);
+        if (m.homer) {
+          const r = Math.max(9, 4.2 * sc);
+          ctx.beginPath();
+          for (let i = 0; i < 10; i++) {
+            const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+            ctx.lineTo(mx + rr * Math.cos(a), my + rr * Math.sin(a));
+          }
+          ctx.closePath(); ctx.fillStyle = '#ffd166'; ctx.fill();
+          ctx.strokeStyle = 'rgba(80,40,0,.7)'; ctx.lineWidth = 1.2; ctx.stroke();
+          if (m.label) {
+            ctx.font = `800 ${Math.max(10, Math.min(13, sc * 4.6))}px system-ui, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.strokeText(m.label, mx, my + r + 2);
+            ctx.fillStyle = '#ffe9a8'; ctx.fillText(m.label, mx, my + r + 2);
+          }
+        } else {
+          this.dot([mx, my], Math.max(2.5, 1.1 * sc), 'rgba(255,255,255,.75)', 'rgba(0,0,0,.35)');
+        }
+      });
+      if (s.trail && s.trail.length > 1) {
+        ctx.lineWidth = Math.max(2, 0.7 * sc); ctx.lineCap = 'round';
+        for (let i = 1; i < s.trail.length; i++) {
+          const a = s.trail[i - 1], c = s.trail[i];
+          const [ax, ay] = P(a.x, a.y), [cx, cy] = P(c.x, c.y);
+          ctx.strokeStyle = s.trailHomer ? `rgba(255,209,102,${0.25 + 0.65 * (i / s.trail.length)})` : `rgba(255,255,255,${0.2 + 0.6 * (i / s.trail.length)})`;
+          ctx.beginPath(); ctx.moveTo(ax, ay - a.z * sc * 0.55); ctx.lineTo(cx, cy - c.z * sc * 0.55); ctx.stroke();
+        }
+      }
 
       const b = s.ball;
       if (b && s.phase !== 'betting') {

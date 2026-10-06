@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d2a1f">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta name="description" content="全壘打競賽：一局 10 球，猜會打出幾支全壘打，猜中依支數倍數派彩">
+<title>全壘打競賽</title>
+<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/derby.css?v=2">
+</head>
+<body class="derby">
+<header class="topbar">
+  <a class="back-btn" id="backBtn" href="https://acc2023156.github.io/GD_Lobby/?cat=exclusive"><span aria-hidden="true">‹</span><span>返回大廳</span></a>
+  <h1 class="brand">全壘打競賽</h1>
+  <div class="top-right">
+    <div class="demo-tag" id="modeTag">試玩 · 非真錢</div>
+    <button class="sound-btn" id="soundBtn" type="button" title="音效開關" aria-label="音效開關">🔊</button>
+    <div class="wallet" title="餘額"><i class="coin"></i><b id="balance">0.00</b></div>
+  </div>
+</header>
+
+<main class="dy-layout">
+  <section class="dy-stage">
+    <div class="dy-board">
+      <div class="dy-score"><span>第 <b id="ballNo">0</b> / 10 球</span><span>全壘打 <b id="homerCount">0</b> 支</span><span>猜 <b id="pickShown">-</b></span></div>
+      <ol class="dy-balls" id="ballSlots" aria-label="10 球結果"></ol>
+    </div>
+    <div class="chart-wrap dy-chart"><canvas id="chart" aria-label="球場"></canvas><div class="dy-result" id="result" hidden></div></div>
+  </section>
+
+  <section class="dy-panel">
+    <div class="dy-field">
+      <label for="wager">每局下注 <small>（1–100）</small></label>
+      <div class="dy-wager">
+        <button type="button" data-step="-10">−10</button>
+        <input id="wager" type="number" inputmode="decimal" min="1" max="100" step="1" value="10">
+        <button type="button" data-step="10">+10</button>
+        <button type="button" data-set="1">最小</button>
+        <button type="button" data-set="100">最大</button>
+      </div>
+    </div>
+    <div class="dy-field">
+      <label>猜這 10 球會打出幾支全壘打</label>
+      <div class="dy-conds" id="conds" role="group" aria-label="玩法"></div>
+      <div class="dy-picks" id="picks"></div>
+      <div class="dy-summary" id="betSummary"></div>
+    </div>
+    <div class="dy-actions">
+      <button type="button" class="dy-go" id="goBtn">開始 10 球</button>
+      <button type="button" class="dy-skip" id="skipBtn" hidden>跳過動畫</button>
+    </div>
+    <div class="dy-links"><button type="button" id="rulesBtn">玩法說明</button><button type="button" id="fairBtn">公平性驗證</button></div>
+    <div class="dy-history"><h3>我的紀錄</h3><div id="history" class="dy-hist-list"><div class="empty">尚無紀錄</div></div></div>
+  </section>
+</main>
+
+<div class="modal" id="rulesModal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+    <div class="modal-head"><h2 id="rulesTitle">全壘打競賽玩法</h2><button type="button" class="x" data-close>✕</button></div>
+    <ol class="rules">
+      <li>一局 <b>10 球</b>。開始前選玩法與支數 <b>0–10</b>，猜這 10 球會打出幾支全壘打：<b>以下</b>、<b>剛好</b>或<b>以上</b>。</li>
+      <li>每球飛過全壘打牆的機率是 <b>40%</b>，最遠 160 公尺；10 球打完計算全壘打支數。</li>
+      <li>猜中就依下表倍數派彩，沒猜中輸掉這注；猜中機率超過 97% 的選項（—）不開放。</li>
+      <li>返還率（RTP）約 98.1–98.5%（倍數無條件捨去到小數兩位）；最高 2000 倍。</li>
+    </ol>
+    <table class="fence-table" id="payTable"><tr><th>支數</th><th>剛好的機率</th><th>以下</th><th>剛好</th><th>以上</th></tr></table>
+  </div>
+</div>
+
+<div class="modal" id="fairModal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="fairTitle">
+    <div class="modal-head"><h2 id="fairTitle">公平性驗證</h2><button type="button" class="x" data-close>✕</button></div>
+    <p class="hint">每局前先公開伺服器種子的 <code>SHA256</code>；結束後公開種子。第 i 球（0–9）由 <code>SHA256(伺服器種子:客戶種子:nonce:derby:i)</code> 決定：前 52 bits 小於 40% 為全壘打，接著 32 bits 決定方向，再 32 bits 決定距離。點任一局可重新計算驗證。</p>
+    <div class="cur" id="fairCurrent"></div>
+    <div id="fairList" class="fair-list"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/sha256.js?v=13"></script>
+<script src="js/sound.js?v=13"></script>
+<script src="js/engine.js?v=13"></script>
+<script src="js/field.js?v=15"></script>
+<script src="js/derby.js?v=2"></script>
+<!-- 大廳背景音樂帶進遊戲（大廳「設定 → 聲音」可關閉） -->
+<script src="https://acc2023156.github.io/GD_Lobby/music/carry.js" defer></script>
+</body>
+</html>
