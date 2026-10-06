@@ -1,0 +1,43 @@
+/* 全壘打競賽 */
+.dy-layout { max-width: 1100px; margin: 0 auto; padding: 10px 12px 24px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .dy-layout { grid-template-columns: minmax(0, 1fr) 340px; } }
+.dy-stage { display: grid; gap: 8px; min-width: 0; }
+.dy-board { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+.dy-score { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text); }
+.dy-score b { color: var(--gold); font-size: 16px; }
+.dy-balls { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+.dy-balls li { height: 34px; border-radius: 6px; background: var(--input); border: 1px solid var(--line); display: grid; place-items: center; font-size: 10px; color: var(--muted); line-height: 1.1; text-align: center; }
+.dy-balls li.now { border-color: var(--gold); box-shadow: 0 0 6px rgba(255, 209, 102, .6); }
+.dy-balls li.hr { background: linear-gradient(180deg, #ffe08a, #f4a51c); color: #4a2b00; font-weight: 900; border-color: #ffd166; }
+.dy-balls li.out { color: var(--strong); }
+.dy-chart { position: relative; height: min(62vw, 440px); min-height: 260px; border-radius: var(--radius); overflow: hidden; background: #10222b; }
+.dy-chart canvas { width: 100%; height: 100%; display: block; }
+.dy-result { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); background: rgba(8, 20, 26, .86); border: 2px solid var(--gold); border-radius: 14px; padding: 12px 22px; text-align: center; color: var(--strong); }
+.dy-result b { display: block; font-size: 26px; color: var(--gold); }
+.dy-result.lose b { color: #ff9aa9; }
+.dy-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 12px; align-content: start; }
+.dy-field label { display: block; font-weight: 700; color: var(--strong); margin-bottom: 6px; font-size: 14px; }
+.dy-field small { color: var(--muted); font-weight: 400; }
+.dy-wager { display: grid; grid-template-columns: 52px 1fr 52px; gap: 6px; }
+.dy-wager input { min-width: 0; background: var(--input); border: 2px solid var(--line); border-radius: 6px; color: var(--strong); font-weight: 700; padding: 8px; text-align: center; font-size: 16px; }
+.dy-wager button { border: 0; border-radius: 6px; background: var(--line); color: var(--strong); font-weight: 700; padding: 8px 0; }
+.dy-wager button[data-set] { grid-column: span 1; }
+.dy-wager button[data-set="1"] { grid-column: 1 / 2; }
+.dy-wager button[data-set="100"] { grid-column: 3 / 4; }
+.dy-picks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dy-picks button { border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--strong); padding: 6px 2px; display: grid; gap: 2px; }
+.dy-picks button b { font-size: 17px; }
+.dy-picks button small { font-size: 11px; color: var(--gold); }
+.dy-picks button.on { border-color: var(--gold); background: linear-gradient(180deg, #2c5260, #1e3d48); box-shadow: 0 0 8px rgba(255, 209, 102, .5); }
+.dy-picks button:disabled, .dy-wager button:disabled, .dy-wager input:disabled { opacity: .55; }
+.dy-actions { display: grid; gap: 8px; }
+.dy-go { border: 0; border-radius: 8px; padding: 14px; font-size: 17px; font-weight: 900; background: var(--green); color: var(--green-ink); }
+.dy-go:disabled { opacity: .5; }
+.dy-skip { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: none; color: var(--strong); font-weight: 700; }
+.dy-links { display: flex; gap: 8px; }
+.dy-links button { flex: 1; border: 1px solid var(--line); background: none; color: var(--text); border-radius: 99px; padding: 6px; font-size: 13px; }
+.dy-history h3 { margin: 0 0 6px; font-size: 14px; color: var(--strong); }
+.dy-hist-list { display: grid; gap: 4px; max-height: 240px; overflow: auto; }
+.dy-hist-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--input); }
+.dy-hist-row .pos { color: var(--green); font-weight: 700; } .dy-hist-row .neg { color: #ff9aa9; }
+.dy-hist-list .empty, .fair-list .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 10px; }
