@@ -8,10 +8,16 @@
   const $ = (s) => document.querySelector(s);
 
   /* ---------- 規則（與 SHA-Platform apps/edge-api/src/derby.ts 相同） ---------- */
-  const BALLS = 10, CHANCE = 0.4, RTP = 0.985, MAX_MULT = 2000, MIN_BET = 1, MAX_BET = 100;
+  const BALLS = 10, CHANCE = 0.4, RTP = 0.985, MAX_MULT = 2000, MAX_CHANCE = 0.97, MAX_DISTANCE = 160, MIN_BET = 1, MAX_BET = 100;
   const binom = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return Math.round(r); };
   const chance = (k) => binom(BALLS, k) * CHANCE ** k * (1 - CHANCE) ** (BALLS - k);
-  const PAYTABLE = Array.from({ length: BALLS + 1 }, (_, k) => Math.min(MAX_MULT, Math.floor((RTP / chance(k)) * 100 + 1e-9) / 100));
+  // 玩法：剛好 k 支、k 支以上、k 支以下（同六子骰）；猜中機率超過 97% 的選項不開放
+  const CONDS = { le: '以下', eq: '剛好', ge: '以上' };
+  const hit = (cond, homers, k) => (cond === 'eq' ? homers === k : cond === 'ge' ? homers >= k : homers <= k);
+  const winChance = (cond, k) => { let t = 0; for (let n = 0; n <= BALLS; n++) if (hit(cond, n, k)) t += chance(n); return t; };
+  const multiplierOf = (cond, k) => { const c = winChance(cond, k); return c > MAX_CHANCE ? null : Math.min(MAX_MULT, Math.floor((RTP / c) * 100 + 1e-9) / 100); };
+  const PAYTABLE = Object.fromEntries(Object.keys(CONDS).map((c) => [c, Array.from({ length: BALLS + 1 }, (_, k) => multiplierOf(c, k))]));
+  const betText = (cond, k) => (cond === 'eq' ? `剛好 ${k} 支` : `${k} 支${CONDS[cond]}`);
   const SECTORS = [{ key: 'LF', fence: 110, from: -45, to: -15 }, { key: 'CF', fence: 122, from: -15, to: 15 }, { key: 'RF', fence: 114, from: 15, to: 45 }];
 
   function ballFromSeed(serverSeed, clientSeed, nonce, i) {
@@ -22,7 +28,7 @@
     const sector = Math.min(2, Math.floor(v * 3)), f = SECTORS[sector];
     const angle = Math.round((f.from + (0.15 + 0.7 * (v * 3 - sector)) * (f.to - f.from)) * 10) / 10;
     const homer = u < CHANCE;
-    const distance = homer ? f.fence + 3 + w * 35 : 25 + w * (f.fence - 27);
+    const distance = homer ? f.fence + 3 + w * (MAX_DISTANCE - f.fence - 3) : 25 + w * (f.fence - 27);
     return { homer, distance: distance.toFixed(1), angle, field: f.key, fence: f.fence };
   }
   const roundFromSeed = (seed, clientSeed, nonce) => Array.from({ length: BALLS }, (_, i) => ballFromSeed(seed, clientSeed, nonce, i));
@@ -83,26 +89,26 @@
     newDemoSeed() { this.demoSeed = randomHex(32); this.commitment = { id: 'demo', server_seed_hash: global.sha256(this.demoSeed) }; },
     saveDemo() { try { localStorage.setItem(DEMO_KEY, JSON.stringify({ balance: this.balance, nonce: this.nonce, history: this.history.slice(0, 30) })); } catch (e) { /* ignore */ } },
     /** 下一局：回傳 10 球、全壘打支數、派彩與公平性資料。 */
-    async play(wager, pick) {
+    async play(wager, cond, pick) {
       if (remote) {
         const res = await api('/games/home-run-derby/bets', {
           request_id: crypto.randomUUID(), commitment_id: this.commitment.id, client_seed: this.clientSeed,
-          wager: { units: toUnits(wager), currency: 'TWD', scale: 3 }, pick,
+          wager: { units: toUnits(wager), currency: 'TWD', scale: 3 }, cond, pick,
         });
         this.balance = fromMoney(res.balance);
         this.commitment = res.next_commitment;
         const o = res.outcome, f = res.fairness;
-        return { balls: o.balls, homers: o.homers, pick, wager, payout: fromMoney(res.payout), multiplier: Number(o.multiplier),
+        return { balls: o.balls, homers: o.homers, cond, pick, wager, payout: fromMoney(res.payout), multiplier: Number(o.multiplier),
           seed: f.server_seed, hash: f.server_seed_hash, clientSeed: f.client_seed, nonce: Number(f.nonce), id: res.round_id };
       }
       if (wager > this.balance + 1e-9) throw new Error('餘額不足');
       const seed = this.demoSeed, hash = this.commitment.server_seed_hash, nonce = this.nonce++;
       const balls = roundFromSeed(seed, this.clientSeed, nonce);
       const homers = balls.filter((b) => b.homer).length;
-      const payout = homers === pick ? cents(wager * PAYTABLE[pick]) : 0;
+      const payout = hit(cond, homers, pick) ? cents(wager * PAYTABLE[cond][pick]) : 0;
       this.balance = cents(this.balance - wager + payout);
       this.newDemoSeed();
-      return { balls, homers, pick, wager, payout, multiplier: PAYTABLE[pick], seed, hash, clientSeed: this.clientSeed, nonce, id: `demo-${nonce}` };
+      return { balls, homers, cond, pick, wager, payout, multiplier: PAYTABLE[cond][pick], seed, hash, clientSeed: this.clientSeed, nonce, id: `demo-${nonce}` };
     },
   };
 
@@ -112,7 +118,8 @@
     ballNo: $('#ballNo'), homerCount: $('#homerCount'), pickShown: $('#pickShown'), result: $('#result'), history: $('#history'),
     toasts: $('#toasts'), soundBtn: $('#soundBtn'),
   };
-  let pick = 4, playing = false, shownBalance = null;
+  // 進場預設：4 支以上
+  let cond = 'ge', pick = 4, playing = false, shownBalance = null;
   $('#modeTag').textContent = remote ? 'GD 錢包' : '試玩 · 非真錢';
 
   function toast(msg, type = 'info') {
@@ -123,8 +130,12 @@
   }
   const renderBalance = () => { el.balance.textContent = fmt(shownBalance ?? game.balance); };
   function renderPicks() {
-    el.picks.innerHTML = PAYTABLE.map((m, k) => `<button type="button" data-pick="${k}" class="${k === pick ? 'on' : ''}"><b>${k}</b><small>${fmtX(m)}</small></button>`).join('');
-    el.picks.querySelectorAll('button').forEach((b) => { b.disabled = playing; b.onclick = () => { pick = Number(b.dataset.pick); renderPicks(); }; });
+    if (PAYTABLE[cond][pick] == null) pick = PAYTABLE[cond].findIndex((m) => m != null);
+    $('#conds').innerHTML = Object.entries(CONDS).map(([c, name]) => `<button type="button" data-cond="${c}" class="${c === cond ? 'on' : ''}">${name}</button>`).join('');
+    $('#conds').querySelectorAll('button').forEach((b) => { b.disabled = playing; b.onclick = () => { cond = b.dataset.cond; renderPicks(); }; });
+    el.picks.innerHTML = PAYTABLE[cond].map((m, k) => `<button type="button" data-pick="${k}" class="${k === pick ? 'on' : ''}" ${m == null ? 'disabled' : ''}><b>${k}</b><small>${m == null ? '—' : fmtX(m)}</small></button>`).join('');
+    el.picks.querySelectorAll('button').forEach((b) => { if (PAYTABLE[cond][Number(b.dataset.pick)] != null) b.disabled = playing; b.onclick = () => { pick = Number(b.dataset.pick); renderPicks(); }; });
+    $('#betSummary').textContent = `猜 ${betText(cond, pick)}・${fmtX(PAYTABLE[cond][pick])}`;
   }
   function renderSlots(balls = [], upto = -1) {
     el.slots.innerHTML = Array.from({ length: BALLS }, (_, i) => {
@@ -155,7 +166,7 @@
   function renderHistory() {
     el.history.innerHTML = game.history.map((h) => {
       const net = cents(h.payout - h.wager);
-      return `<div class="dy-hist-row"><span>猜 ${h.pick} 支・打出 ${h.homers} 支</span><span>${fmt(h.wager)}</span><span class="${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}</span></div>`;
+      return `<div class="dy-hist-row"><span>猜 ${betText(h.cond || 'eq', h.pick)}・打出 ${h.homers} 支</span><span>${fmt(h.wager)}</span><span class="${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}</span></div>`;
     }).join('') || '<div class="empty">尚無紀錄</div>';
   }
 
@@ -171,7 +182,8 @@
   })();
 
   /* ---------- 玩法說明、公平性 ---------- */
-  $('#payTable').insertAdjacentHTML('beforeend', PAYTABLE.map((m, k) => `<tr><td>${k} 支</td><td>${(chance(k) * 100).toFixed(k >= 9 ? 4 : 2)}%</td><td><b>${fmtX(m)}</b></td></tr>`).join(''));
+  $('#payTable').insertAdjacentHTML('beforeend', Array.from({ length: BALLS + 1 }, (_, k) =>
+    `<tr><td>${k} 支</td><td>${(chance(k) * 100).toFixed(k >= 9 ? 4 : 2)}%</td>${['le', 'eq', 'ge'].map((c) => `<td>${PAYTABLE[c][k] == null ? '—' : `<b>${fmtX(PAYTABLE[c][k])}</b>`}</td>`).join('')}</tr>`).join(''));
   const modal = (id) => {
     const m = $(id);
     m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; });
@@ -182,7 +194,7 @@
   $('#fairBtn').onclick = () => {
     $('#fairCurrent').innerHTML = `下一局伺服器種子 hash：<br><code>${game.commitment ? game.commitment.server_seed_hash : '-'}</code><br>客戶種子：<code>${game.clientSeed}</code>`;
     const list = $('#fairList');
-    list.innerHTML = game.history.map((h, i) => `<details data-i="${i}"><summary><span>猜 ${h.pick}・打出 ${h.homers} 支</span><b>${h.payout > 0 ? '+' + fmt(h.payout) : '未中'}</b></summary>
+    list.innerHTML = game.history.map((h, i) => `<details data-i="${i}"><summary><span>猜 ${betText(h.cond || 'eq', h.pick)}・打出 ${h.homers} 支</span><b>${h.payout > 0 ? '+' + fmt(h.payout) : '未中'}</b></summary>
       <div class="kv">hash：<code>${h.hash}</code></div><div class="kv">seed：<code>${h.seed}</code></div><div class="kv">客戶種子：<code>${h.clientSeed}</code>・nonce：${h.nonce}</div><div class="kv verify"></div></details>`).join('') || '<div class="empty">尚無已結束的局</div>';
     list.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
       if (!d.open) return;
@@ -220,13 +232,16 @@
 
   function flightOf(b) {
     const d = Number(b.distance);
-    return { d, angle: b.angle, fence: b.fence, peak: 6 + d * 0.3, ms: 1100 + d * 9 };
+    return { d, angle: b.angle, fence: b.fence, peak: 8 + d * 0.32, ms: 1300 + d * 9 };
   }
+  // 畫面上的距離：牆前 15 公尺以內照實際，之後平滑地逐漸收斂（tanh），最遠 160 公尺也留在看台內，
+  // 而且沒有轉折，球不會像撞到牆一樣突然變慢（顯示的公尺數不變）
+  const KNEE = 15, SPAN = 28;
+  const shownOf = (h, fence) => (h <= fence - KNEE ? h : fence - KNEE + SPAN * Math.tanh((h - fence + KNEE) / SPAN));
   function ballAt(fl, t) {
-    const horiz = fl.d * (1 - Math.pow(1 - t, 1.35));
-    // 過牆後的部分在畫面上壓縮一半，讓全壘打落點留在看台內（顯示的距離不變）
-    const shown = horiz > fl.fence ? fl.fence + (horiz - fl.fence) * 0.45 : horiz;
-    const [x, y] = polar(shown * visScale(fl.angle), fl.angle);
+    // 拋物線：水平等速、高度 = 4·頂點·t·(1−t)
+    const horiz = fl.d * t;
+    const [x, y] = polar(shownOf(horiz, fl.fence) * visScale(fl.angle), fl.angle);
     return { x, y, z: fl.peak * 4 * t * (1 - t) + (1 - t), d: horiz, label: horiz };
   }
 
@@ -238,11 +253,16 @@
     state.field = a.balls[a.i].field;
     state.celebrate = false;
     state.trail = [];
-    field.setView('behind', now);
-    a.stage = 'pitch';
     a.t0 = now;
-    a.pitchMs = a.i === 0 ? PITCH_FIRST : PITCH_NEXT;
-    if (a.i === 0) Sound.calvary();
+    a.stage = 'pitch';
+    if (a.i === 0) {
+      // 開場：本壘後方看投手投球（號角聲），之後每球都留在上視角
+      field.setView('behind', now);
+      a.pitchMs = PITCH_FIRST;
+      Sound.calvary();
+    } else {
+      a.pitchMs = PITCH_NEXT;
+    }
     el.ballNo.textContent = a.i + 1;
     renderSlots(a.balls, a.i - 1);
   }
@@ -255,8 +275,8 @@
         if (state.betLeft <= 0) {
           a.stage = 'flight'; a.t0 = now; a.fl = flightOf(a.balls[a.i]);
           state.phase = 'running'; state.flightT = 0; state.trailHomer = a.balls[a.i].homer;
-          field.setView('top', now);
-          Sound.hit(); Sound.swoosh();
+          if (a.i === 0) { field.setView('top', now); Sound.swoosh(); }
+          Sound.hit();
         }
       } else if (a.stage === 'flight') {
         const t = Math.min(1, (now - a.t0) / a.fl.ms);
@@ -274,7 +294,7 @@
 
   function land(now) {
     const a = anim, b = a.balls[a.i];
-    state.marks.push({ x: state.ball.x, y: state.ball.y, homer: b.homer });
+    state.marks.push({ x: state.ball.x, y: state.ball.y, homer: b.homer, label: `${Math.round(Number(b.distance))}m` });
     state.ball.label = Number(b.distance);
     if (b.homer) {
       a.homers += 1;
@@ -298,8 +318,8 @@
     el.result.hidden = false;
     el.result.className = 'dy-result' + (r.payout > 0 ? '' : ' lose');
     el.result.innerHTML = r.payout > 0
-      ? `猜中 ${r.pick} 支全壘打！<b>+${fmt(r.payout)}</b>${fmtX(r.multiplier)}`
-      : `打出 ${r.homers} 支・猜 ${r.pick} 支<b>沒猜中</b>`;
+      ? `打出 ${r.homers} 支・猜 ${betText(r.cond, r.pick)} 猜中！<b>+${fmt(r.payout)}</b>${fmtX(r.multiplier)}`
+      : `打出 ${r.homers} 支・猜 ${betText(r.cond, r.pick)}<b>沒猜中</b>`;
     if (r.payout > 0) Sound.win(); else Sound.lose();
     shownBalance = null;
     renderBalance();
@@ -316,7 +336,7 @@
     if (!a) return;
     for (let i = a.i + (a.stage === 'pause' ? 1 : 0); i < BALLS; i++) {
       const b = a.balls[i], fl = flightOf(b), p = ballAt(fl, 1);
-      if (!(i === a.i && a.stage === 'pause')) state.marks.push({ x: p.x, y: p.y, homer: b.homer });
+      if (!(i === a.i && a.stage === 'pause')) state.marks.push({ x: p.x, y: p.y, homer: b.homer, label: `${Math.round(Number(b.distance))}m` });
     }
     field.setView('top', performance.now());
     finish();
@@ -330,12 +350,12 @@
     lock(true);
     el.result.hidden = true;
     state.marks = []; state.trail = [];
-    el.pickShown.textContent = pick;
+    el.pickShown.textContent = betText(cond, pick);
     el.homerCount.textContent = 0;
     shownBalance = cents(game.balance - wager);
     renderBalance();
     try {
-      const round = await game.play(wager, pick);
+      const round = await game.play(wager, cond, pick);
       anim = { round, balls: round.balls, i: 0, homers: 0 };
       startBall(performance.now());
     } catch (e) {

@@ -287,14 +287,20 @@
       (s.marks || []).forEach(m => {
         const [mx, my] = P(m.x, m.y);
         if (m.homer) {
-          const r = Math.max(5, 2.6 * sc);
+          const r = Math.max(9, 4.2 * sc);
           ctx.beginPath();
           for (let i = 0; i < 10; i++) {
             const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
             ctx.lineTo(mx + rr * Math.cos(a), my + rr * Math.sin(a));
           }
           ctx.closePath(); ctx.fillStyle = '#ffd166'; ctx.fill();
-          ctx.strokeStyle = 'rgba(80,40,0,.6)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.strokeStyle = 'rgba(80,40,0,.7)'; ctx.lineWidth = 1.2; ctx.stroke();
+          if (m.label) {
+            ctx.font = `800 ${Math.max(10, Math.min(13, sc * 4.6))}px system-ui, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.strokeText(m.label, mx, my + r + 2);
+            ctx.fillStyle = '#ffe9a8'; ctx.fillText(m.label, mx, my + r + 2);
+          }
         } else {
           this.dot([mx, my], Math.max(2.5, 1.1 * sc), 'rgba(255,255,255,.75)', 'rgba(0,0,0,.35)');
         }

@@ -24,6 +24,11 @@
 .dy-wager button[data-set] { grid-column: span 1; }
 .dy-wager button[data-set="1"] { grid-column: 1 / 2; }
 .dy-wager button[data-set="100"] { grid-column: 3 / 4; }
+.dy-conds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+.dy-conds button { border: 1px solid var(--line); border-radius: 99px; background: var(--input); color: var(--text); padding: 7px 0; font-weight: 800; }
+.dy-conds button.on { background: linear-gradient(180deg, #ffe08a, #f4a51c); color: #4a2b00; border-color: #ffd166; }
+.dy-conds button:disabled { opacity: .55; }
+.dy-summary { margin-top: 8px; text-align: center; color: var(--gold); font-weight: 800; font-size: 14px; }
 .dy-picks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .dy-picks button { border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--strong); padding: 6px 2px; display: grid; gap: 2px; }
 .dy-picks button b { font-size: 17px; }
