@@ -8,7 +8,7 @@
   const $ = (s) => document.querySelector(s);
 
   /* ---------- 規則（與 SHA-Platform apps/edge-api/src/derby.ts 相同） ---------- */
-  const BALLS = 10, CHANCE = 0.4, RTP = 0.985, MAX_MULT = 2000, MAX_CHANCE = 0.97, MAX_DISTANCE = 160, MIN_BET = 1, MAX_BET = 100;
+  const BALLS = 10, CHANCE = 0.4, RTP = 0.985, MAX_MULT = 2000, MAX_CHANCE = 0.97, MAX_DISTANCE = 160, MIN_BET = 10, MAX_BET = 100, BET_STEP = 10;
   const binom = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return Math.round(r); };
   const chance = (k) => binom(BALLS, k) * CHANCE ** k * (1 - CHANCE) ** (BALLS - k);
   // 玩法：剛好 k 支、k 支以上、k 支以下（同六子骰）；猜中機率超過 97% 的選項不開放
@@ -116,7 +116,7 @@
   const el = {
     balance: $('#balance'), wager: $('#wager'), picks: $('#picks'), go: $('#goBtn'), skip: $('#skipBtn'), slots: $('#ballSlots'),
     ballNo: $('#ballNo'), homerCount: $('#homerCount'), pickShown: $('#pickShown'), result: $('#result'), history: $('#history'),
-    toasts: $('#toasts'), soundBtn: $('#soundBtn'),
+    toasts: $('#toasts'), soundBtn: $('#soundBtn'), tap: $('#tapHint'), chartWrap: $('#chart').parentElement,
   };
   // 進場預設：4 支以上
   let cond = 'ge', pick = 4, playing = false, shownBalance = null;
@@ -133,8 +133,9 @@
     if (PAYTABLE[cond][pick] == null) pick = PAYTABLE[cond].findIndex((m) => m != null);
     $('#conds').innerHTML = Object.entries(CONDS).map(([c, name]) => `<button type="button" data-cond="${c}" class="${c === cond ? 'on' : ''}">${name}</button>`).join('');
     $('#conds').querySelectorAll('button').forEach((b) => { b.disabled = playing; b.onclick = () => { cond = b.dataset.cond; renderPicks(); }; });
-    el.picks.innerHTML = PAYTABLE[cond].map((m, k) => `<button type="button" data-pick="${k}" class="${k === pick ? 'on' : ''}" ${m == null ? 'disabled' : ''}><b>${k}</b><small>${m == null ? '—' : fmtX(m)}</small></button>`).join('');
-    el.picks.querySelectorAll('button').forEach((b) => { if (PAYTABLE[cond][Number(b.dataset.pick)] != null) b.disabled = playing; b.onclick = () => { pick = Number(b.dataset.pick); renderPicks(); }; });
+    // 猜中機率超過 97% 的選項不開放，直接不顯示
+    el.picks.innerHTML = PAYTABLE[cond].map((m, k) => (m == null ? '' : `<button type="button" data-pick="${k}" class="${k === pick ? 'on' : ''}"><b>${k}</b><small>${fmtX(m)}</small></button>`)).join('');
+    el.picks.querySelectorAll('button').forEach((b) => { b.disabled = playing; b.onclick = () => { pick = Number(b.dataset.pick); renderPicks(); }; });
     $('#betSummary').textContent = `猜 ${betText(cond, pick)}・${fmtX(PAYTABLE[cond][pick])}`;
   }
   function renderSlots(balls = [], upto = -1) {
@@ -144,22 +145,33 @@
       return `<li class="${b.homer ? 'hr' : 'out'}">${b.homer ? 'HR' : ''}<br>${Math.round(b.distance)}m</li>`;
     }).join('');
   }
+  // 每局下注 10–100，以 10 為單位；到最小時 −10 不能按，到最大時 +10 不能按
   function readWager() {
-    const v = Math.min(MAX_BET, Math.max(MIN_BET, Math.round(Number(el.wager.value) || MIN_BET)));
+    const v = Math.min(MAX_BET, Math.max(MIN_BET, Math.round((Number(el.wager.value) || MIN_BET) / BET_STEP) * BET_STEP));
     el.wager.value = v;
+    renderWagerButtons();
     return v;
+  }
+  function renderWagerButtons() {
+    const v = Number(el.wager.value);
+    document.querySelectorAll('.dy-wager button').forEach((b) => {
+      const step = Number(b.dataset.step || 0);
+      b.disabled = playing || (step < 0 && v <= MIN_BET) || (step > 0 && v >= MAX_BET);
+    });
   }
   function lock(on) {
     playing = on;
     el.go.disabled = on;
     el.wager.disabled = on;
-    document.querySelectorAll('.dy-wager button').forEach((b) => { b.disabled = on; });
+    renderWagerButtons();
     el.skip.hidden = !on;
+    el.tap.hidden = on;
     renderPicks();
   }
   document.querySelectorAll('.dy-wager button').forEach((b) => (b.onclick = () => {
     const v = b.dataset.set ? Number(b.dataset.set) : (Number(el.wager.value) || 0) + Number(b.dataset.step);
     el.wager.value = Math.min(MAX_BET, Math.max(MIN_BET, v));
+    readWager();
   }));
   el.wager.addEventListener('change', readWager);
 
@@ -365,7 +377,14 @@
     }
   };
 
+  // 點擊球場（或手指提示）也可以開始
+  el.chartWrap.addEventListener('click', (e) => {
+    if (playing || el.go.disabled || e.target.closest('.dy-result')) return;
+    el.go.click();
+  });
+
   /* ---------- 開始 ---------- */
+  readWager();
   renderPicks();
   renderSlots();
   renderHistory();
