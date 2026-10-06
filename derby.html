@@ -8,7 +8,7 @@
 <meta name="description" content="全壘打競賽：一局 10 球，猜會打出幾支全壘打，猜中依支數倍數派彩">
 <title>全壘打競賽</title>
 <link rel="stylesheet" href="css/style.css?v=13">
-<link rel="stylesheet" href="css/derby.css?v=2">
+<link rel="stylesheet" href="css/derby.css?v=3">
 </head>
 <body class="derby">
 <header class="topbar">
@@ -27,17 +27,21 @@
       <div class="dy-score"><span>第 <b id="ballNo">0</b> / 10 球</span><span>全壘打 <b id="homerCount">0</b> 支</span><span>猜 <b id="pickShown">-</b></span></div>
       <ol class="dy-balls" id="ballSlots" aria-label="10 球結果"></ol>
     </div>
-    <div class="chart-wrap dy-chart"><canvas id="chart" aria-label="球場"></canvas><div class="dy-result" id="result" hidden></div></div>
+    <div class="chart-wrap dy-chart"><canvas id="chart" aria-label="球場"></canvas><div class="dy-result" id="result" hidden></div><button type="button" class="dy-tap" id="tapHint" aria-label="點擊球場開始全力轟"><span class="finger" aria-hidden="true">👆</span><span>點擊球場 開始全力轟</span></button></div>
   </section>
 
   <section class="dy-panel">
+    <div class="dy-actions">
+      <button type="button" class="dy-go" id="goBtn">開始全力轟</button>
+      <button type="button" class="dy-skip" id="skipBtn" hidden>跳過動畫</button>
+    </div>
     <div class="dy-field">
-      <label for="wager">每局下注 <small>（1–100）</small></label>
+      <label for="wager">每局下注 <small>（10–100）</small></label>
       <div class="dy-wager">
         <button type="button" data-step="-10">−10</button>
-        <input id="wager" type="number" inputmode="decimal" min="1" max="100" step="1" value="10">
+        <input id="wager" type="number" inputmode="numeric" min="10" max="100" step="10" value="10">
         <button type="button" data-step="10">+10</button>
-        <button type="button" data-set="1">最小</button>
+        <button type="button" data-set="10">最小</button>
         <button type="button" data-set="100">最大</button>
       </div>
     </div>
@@ -46,10 +50,6 @@
       <div class="dy-conds" id="conds" role="group" aria-label="玩法"></div>
       <div class="dy-picks" id="picks"></div>
       <div class="dy-summary" id="betSummary"></div>
-    </div>
-    <div class="dy-actions">
-      <button type="button" class="dy-go" id="goBtn">開始 10 球</button>
-      <button type="button" class="dy-skip" id="skipBtn" hidden>跳過動畫</button>
     </div>
     <div class="dy-links"><button type="button" id="rulesBtn">玩法說明</button><button type="button" id="fairBtn">公平性驗證</button></div>
     <div class="dy-history"><h3>我的紀錄</h3><div id="history" class="dy-hist-list"><div class="empty">尚無紀錄</div></div></div>
@@ -84,7 +84,7 @@
 <script src="js/sound.js?v=13"></script>
 <script src="js/engine.js?v=13"></script>
 <script src="js/field.js?v=15"></script>
-<script src="js/derby.js?v=2"></script>
+<script src="js/derby.js?v=3"></script>
 <!-- 大廳背景音樂帶進遊戲（大廳「設定 → 聲音」可關閉） -->
 <script src="https://acc2023156.github.io/GD_Lobby/music/carry.js" defer></script>
 </body>
