@@ -18,7 +18,7 @@
   const apiBase = (() => {
     try {
       const u = new URL(query.get('api') || 'https://sha-platform-dev.sha-platform.workers.dev/api/v1');
-      return /\.workers\.dev$|^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.href.replace(/\/$/, '') : '';
+      return /\.workers\.dev$|(^|\.)gdclub\.cc$|^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.href.replace(/\/$/, '') : '';
     } catch (e) { return ''; }
   })();
   if (!token || !apiBase) return;
